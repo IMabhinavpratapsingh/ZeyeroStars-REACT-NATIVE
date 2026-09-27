@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { BOTTOM_NAV_PX } from '../../../shared/constants/layout';
 import useBackButtonHandler from '../../../shared/hooks/useBackButtonHandler';
 import useTopZIndex from '../../../shared/hooks/useTopZIndex';
 import useStableCallback from '../../../shared/hooks/useStableCallback';
@@ -535,7 +536,10 @@ const InboxModal = ({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ type: 'timing', duration: 180 }}
-          style={[styles.screen, { zIndex, elevation: 20, paddingTop: insets.top + 16 }]}
+          style={[
+            styles.screen,
+            { zIndex, elevation: 20, paddingTop: insets.top + 16, bottom: BOTTOM_NAV_PX + insets.bottom },
+          ]}
         >
           <View style={styles.header}>
             <View style={styles.headerTopRow}>
@@ -709,7 +713,12 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     top: 0,
-    bottom: 76,
+    // FIX: yahan pehle hardcoded `bottom: 76` tha (purani web value, jo
+    // BottomNav ki asli height (BOTTOM_NAV_PX=80) + phone ka bottom
+    // safe-area inset (gesture bar) - dono se match nahi karta tha,
+    // isliye content BottomNav se pehle hi khatam ho jaata tha aur beech
+    // mein khaali black gap dikhta tha. Ab yeh dynamically inline style
+    // se set hota hai (upar `bottom: BOTTOM_NAV_PX + insets.bottom`).
     backgroundColor: '#0a0a0a', // star-900
   },
   header: {

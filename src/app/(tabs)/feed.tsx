@@ -10,6 +10,7 @@ import HashtagSearchModal from '../../features/feed/components/HashtagSearchModa
 import useFeedState, { type FeedPost } from '../../features/dashboard/hooks/useFeedState';
 import { listMyCommunities } from '../../features/communities/services/communitiesApi';
 import { showAlert } from '../../shared/utils/alertBus';
+import { requestOpenRooms } from '../../shared/utils/navOverlayBus';
 
 // WEB -> RN: Dashboard.jsx (web, 4281 lines) ka "Feed" slice yahan aa gaya -
 // list + pull-to-refresh + infinite scroll + like, CreatePostModal (naya
@@ -21,7 +22,7 @@ import { showAlert } from '../../shared/utils/alertBus';
 // hai. Photo attach abhi bhi agla pass hai.
 export default function FeedScreen() {
   const router = useRouter();
-  const { posts, loading, loadingMore, refreshing, fetchFeed, refreshFeed, loadMoreFeed, toggleLike, createPost } =
+  const { posts, loading, loadingMore, refreshing, fetchFeed, refreshFeed, loadMoreFeed, toggleLike, createPost, removePost } =
     useFeedState();
 
   const [myCommunities, setMyCommunities] = useState<PickerCommunity[]>([]);
@@ -91,8 +92,8 @@ export default function FeedScreen() {
       </View>
 
       <RoomsStrip
-        onOpenRooms={() => router.push('/(tabs)/rooms')}
-        onOpenRoomDirect={() => router.push('/(tabs)/rooms')}
+        onOpenRooms={() => requestOpenRooms()}
+        onOpenRoomDirect={() => requestOpenRooms()}
       />
 
       <FeedList

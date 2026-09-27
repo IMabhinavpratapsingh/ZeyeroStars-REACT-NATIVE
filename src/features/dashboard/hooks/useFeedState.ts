@@ -25,37 +25,69 @@ export interface FeedPost {
   [key: string]: unknown;
 }
 
-// WEB -> RN NOTE: Dashboard.jsx (web) ka feed slice `feedResource`
-// (persistentCache-backed, localStorage se seeded) use karta tha taaki
-// app reopen hote hi purana feed turant dikhe. Yahan pehla version simpler
-// rakha hai - seedha fetch, koi disk-persisted snapshot nahi. Agar aage
-// "app khulte hi turant purana feed dikhe" chahiye to persistentCache.ts
-// (already shared/services mein migrated) ke through yahan bhi wire kar
-// denge - abhi ke liye MVP hai.
+// MODULE-LEVEL CACHE: Home tab (dashboard.tsx) is Slot-based (tabs)/_layout
+// ke andar hai - kisi doosre tab (Rooms/DM/Profile) par jaate hi Home
+// UNMOUNT ho jaata hai, aur wapas aane par REMOUNT (fresh useState([])) -
+// isi wajah se pehle har baar Home par wapas aate hi feed refetch/refresh
+// ho raha tha. Fix: yeh data ab component ke bahar (module scope) rakha
+// hai, isliye remount hone par bhi zinda rehta hai - sirf pehli baar hi
+// network call hota hai, uske baad har mount sirf isi cache se hydrate
+// hota hai. Sirf explicit pull-to-refresh (refreshFeed) hamesha fresh
+// backend hit karta hai aur cache ko update karta hai.
+let cache = {
+  posts: [] as FeedPost[],
+  hasMore: true,
+  offset: 0,
+  loadedOnce: false,
+};
+
 export default function useFeedState() {
-  const [posts, setPosts] = useState<FeedPost[]>([]);
+  const [posts, setPostsState] = useState<FeedPost[]>(cache.posts);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
-  const offsetRef = useRef(0);
+  const [hasMore, setHasMoreState] = useState(cache.hasMore);
+  const offsetRef = useRef(cache.offset);
 
+  // Har setPosts call ko cache ke saath bhi sync rakho, taaki agli baar
+  // component remount ho to yehi latest data mile.
+  const setPosts = useCallback((updater: FeedPost[] | ((prev: FeedPost[]) => FeedPost[])) => {
+    setPostsState((prev) => {
+      const next = typeof updater === 'function' ? (updater as (p: FeedPost[]) => FeedPost[])(prev) : updater;
+      cache.posts = next;
+      return next;
+    });
+  }, []);
+
+  const setHasMore = useCallback((v: boolean) => {
+    cache.hasMore = v;
+    setHasMoreState(v);
+  }, []);
+
+  // Pehli baar hi network call karo (cache.loadedOnce false ho) - baaki
+  // har baar (tab switch se remount) yeh sirf no-op hai, cache se hydrate
+  // ho hi chuka hai (initial useState upar).
   const fetchFeed = useCallback(async () => {
+    if (cache.loadedOnce) return;
+    cache.loadedOnce = true;
     setLoading(true);
     try {
       const res = await getFeedPosts(0, FEED_PAGE_SIZE);
       const list: FeedPost[] = res.data.posts || [];
       setPosts(list);
       offsetRef.current = list.length;
+      cache.offset = list.length;
       setHasMore(!!res.data.has_more);
     } catch (err: any) {
       console.error('Feed load error:', err.response?.data || err.message);
+      cache.loadedOnce = false; // fail hua to agli baar phir try kare
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [setPosts, setHasMore]);
 
-  // Pull-to-refresh - hamesha fresh backend hit, offset 0 se.
+  // Pull-to-refresh - hamesha fresh backend hit, offset 0 se, aur cache
+  // ko bhi update karta hai.
   const refreshFeed = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -63,13 +95,15 @@ export default function useFeedState() {
       const list: FeedPost[] = res.data.posts || [];
       setPosts(list);
       offsetRef.current = list.length;
+      cache.offset = list.length;
+      cache.loadedOnce = true;
       setHasMore(!!res.data.has_more);
     } catch (err: any) {
       console.error('Feed refresh error:', err.response?.data || err.message);
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, [setPosts, setHasMore]);
 
   // Instagram jaisa "scroll down to load more" - FlatList onEndReached se call karo.
   const loadMoreFeed = useCallback(async () => {
@@ -83,41 +117,45 @@ export default function useFeedState() {
         return [...prev, ...newList.filter((p) => !existingIds.has(p.id))];
       });
       offsetRef.current += newList.length;
+      cache.offset = offsetRef.current;
       setHasMore(!!res.data.has_more);
     } catch (err: any) {
       console.error('Feed load more error:', err.response?.data || err.message);
     } finally {
       setLoadingMore(false);
     }
-  }, [loadingMore, hasMore, loading]);
+  }, [loadingMore, hasMore, loading, setPosts, setHasMore]);
 
   // Optimistic toggle - turant UI update, backend fail hua to wapas revert.
-  const toggleLike = useCallback(async (postId: string | number) => {
-    let prevSnapshot: FeedPost[] = [];
-    setPosts((prev) => {
-      prevSnapshot = prev;
-      return prev.map((p) =>
-        p.id === postId
-          ? {
-              ...p,
-              liked_by_me: !p.liked_by_me,
-              likes_count: (p.likes_count || 0) + (p.liked_by_me ? -1 : 1),
-            }
-          : p
-      );
-    });
-    try {
-      const res = await togglePostLike(postId);
-      setPosts((prev) =>
-        prev.map((p) =>
-          p.id === postId ? { ...p, liked_by_me: !!res.data.liked, likes_count: res.data.likes } : p
-        )
-      );
-    } catch (err: any) {
-      console.error('Toggle like error:', err.response?.data || err.message);
-      setPosts(prevSnapshot); // revert
-    }
-  }, []);
+  const toggleLike = useCallback(
+    async (postId: string | number) => {
+      let prevSnapshot: FeedPost[] = [];
+      setPosts((prev) => {
+        prevSnapshot = prev;
+        return prev.map((p) =>
+          p.id === postId
+            ? {
+                ...p,
+                liked_by_me: !p.liked_by_me,
+                likes_count: (p.likes_count || 0) + (p.liked_by_me ? -1 : 1),
+              }
+            : p
+        );
+      });
+      try {
+        const res = await togglePostLike(postId);
+        setPosts((prev) =>
+          prev.map((p) =>
+            p.id === postId ? { ...p, liked_by_me: !!res.data.liked, likes_count: res.data.likes } : p
+          )
+        );
+      } catch (err: any) {
+        console.error('Toggle like error:', err.response?.data || err.message);
+        setPosts(prevSnapshot); // revert
+      }
+    },
+    [setPosts]
+  );
 
   // Naya post banane ke baad seedha list ke top par daal do - reload ka
   // wait nahi karna padta (Instagram jaisa optimistic feel).
@@ -128,10 +166,20 @@ export default function useFeedState() {
       if (newPost) {
         setPosts((prev) => [newPost, ...prev]);
         offsetRef.current += 1;
+        cache.offset = offsetRef.current;
       }
       return newPost;
     },
-    []
+    [setPosts]
+  );
+
+  // Post delete hone ke baad list se turant hata do (PostDetailModal ka
+  // onPostDeleted isi ko call karta hai) - reload ka wait nahi karna padta.
+  const removePost = useCallback(
+    (postId: string | number) => {
+      setPosts((prev) => prev.filter((p) => p.id !== postId));
+    },
+    [setPosts]
   );
 
   return {
@@ -145,5 +193,6 @@ export default function useFeedState() {
     loadMoreFeed,
     toggleLike,
     createPost,
+    removePost,
   };
 }

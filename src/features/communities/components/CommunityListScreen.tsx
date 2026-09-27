@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import useBackButtonHandler from '../../../shared/hooks/useBackButtonHandler';
 import useTopZIndex from '../../../shared/hooks/useTopZIndex';
 import { SlideInRight } from '../../../shared/components/motion/ScreenTransition';
+import { BOTTOM_NAV_PX } from '../../../shared/constants/layout';
 import CommunityCard from './CommunityCard';
 import CreateCommunityModal from './CreateCommunityModal';
 import {
@@ -156,7 +157,11 @@ const CommunityListScreen = ({ show, onClose, onOpenCommunity, initialTab = 'all
 
   return (
     <>
-      <SlideInRight show={show} style={[styles.overlay, { zIndex, elevation: zIndex }]}>
+      <SlideInRight
+        show={show}
+        bouncy={false}
+        style={[styles.overlay, { bottom: BOTTOM_NAV_PX, zIndex, elevation: zIndex }]}
+      >
         <View style={styles.header}>
           <Pressable onPress={onClose} hitSlop={10}>
             <Ionicons name="arrow-back" size={18} color="#fff" />

@@ -11,36 +11,29 @@ import {
 } from 'react-native';
 import axios from 'axios';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, usePathname } from 'expo-router';
-import { getActiveRooms, createRoom } from '../../features/rooms/services/roomsApi';
-import { showAlert } from '../../shared/utils/alertBus';
-import { API_BASE } from '../../shared/config/config';
-import { getToken } from '../../shared/services/NetworkManager';
-import { getMyId } from '../../shared/utils/auth';
-import useWebSocket from '../../shared/hooks/useWebSocket';
-import useBackButtonHandler from '../../shared/hooks/useBackButtonHandler';
-import useRoomState from '../../features/dashboard/hooks/useRoomState';
-import RoomChatWindow from '../../features/rooms/components/RoomChatWindow';
-import LoadingOverlay from '../../shared/components/LoadingOverlay';
+import { getActiveRooms, createRoom } from '../services/roomsApi';
+import { showAlert } from '../../../shared/utils/alertBus';
+import { API_BASE } from '../../../shared/config/config';
+import { getToken } from '../../../shared/services/NetworkManager';
+import { getMyId } from '../../../shared/utils/auth';
+import useWebSocket from '../../../shared/hooks/useWebSocket';
+import useBackButtonHandler from '../../../shared/hooks/useBackButtonHandler';
+import { PersistentSlide } from '../../../shared/components/motion/ScreenTransition';
+import useRoomState from '../../dashboard/hooks/useRoomState';
+import RoomChatWindow from './RoomChatWindow';
+import LoadingOverlay from '../../../shared/components/LoadingOverlay';
 
-// WEB -> RN: Dashboard.jsx (web) ka "Rooms" slice - BROWSE + CREATE (jo
-// pehle se tha) + ab actual room FLOOR bhi (RoomChatWindow -> RoomFloorView,
-// chat, chess panel, radio, ban/kick, edit-room). useRoomState (already
-// likha hua tha, bas kahin instantiate nahi hua tha) yahan wire kiya hai -
-// same pattern jo dm.tsx mein useInboxState/useDMState ke liye use hua tha.
+// WEB -> RN: yeh pehle `app/(tabs)/rooms.tsx` tha (ek Tabs.Screen route).
+// Ab DM ki tarah hi Community list/detail jaisa PERSISTENT overlay hai -
+// `(tabs)/_layout.tsx` se `show` boolean se slide hota hai, route/pathname
+// involve nahi. Dekho DMOverlayScreen.tsx ka top comment - same reasoning
+// yahan bhi: component hamesha mounted rehta hai, isliye agar user kisi
+// active room ke andar hai (RoomChatWindow, WebSocket-driven floor) aur
+// DM/Home par slide kar jaaye, room state/connection bilkul waisi hi
+// bani rehti hai - koi remount/reconnect nahi hota.
 //
-// SCOPE NOTE (dm.tsx jaisa hi): `closeOtherNavPanels` is standalone tab mein
-// no-op hai (koi "dusra panel" hai hi nahi is route ke andar). `isPrivileged`
-// yahan khud ek chhota self-profile fetch (is_verified || is_elite) se aata
-// hai (profile.tsx tab ka wahi /profile/{id} pattern) - koi shared
-// "my profile" hook abhi nahi hai. onViewProfile/onTip abhi "coming soon"
-// hain (ProfileViewModal/TipModal wiring alag pass) - dm.tsx mein tip bhi
-// isi tarah stub hai. onOpenSettings/onOpenCommunity optional hain, is pass
-// mein pass nahi kiye (community rooms is app se nikal diye gaye hain).
-//
-// IMPORTANT GAP (ye is file ke scope se bahar hai): poori app mein kahin
-// bhi `networkManager.connect()` call nahi hota (login.tsx ke baad na hi
-// _layout.tsx mein) - matlab socket hi open nahi hota, isliye yeh saari
+// IMPORTANT GAP (same as before, ab bhi is file ke scope se bahar hai):
+// poori app mein kahin bhi `networkManager.connect()` call nahi hota -
 // room-floor wiring abhi runtime par "not connected" ki wajah se silently
 // no-op rahegi jab tak connect() kahin (login success + app boot pe) call
 // nahi hota. Yeh agla sabse zaroori chhota kaam hai.
@@ -86,14 +79,13 @@ const RoomCard = ({ room, onPress }: { room: Room; onPress: () => void }) => (
   </Pressable>
 );
 
-export default function RoomsScreen() {
-  const router = useRouter();
-  // expo-router Tabs is tab ko UNMOUNT nahi karta (sirf hide) - isliye
-  // "abhi focused hai" janne ke liye pathname check (koi extra nav-lib
-  // dependency nahi chahiye). Focused hote hi native back -> Dashboard.
-  const pathname = usePathname();
-  const isFocused = pathname.includes('/rooms');
-  useBackButtonHandler(isFocused, useCallback(() => router.push('/(tabs)/dashboard'), [router]));
+interface RoomsOverlayScreenProps {
+  show: boolean;
+  onClose: () => void;
+}
+
+export default function RoomsOverlayScreen({ show, onClose }: RoomsOverlayScreenProps) {
+  useBackButtonHandler(show, onClose);
 
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
@@ -127,7 +119,7 @@ export default function RoomsScreen() {
   }, []);
   const isPrivileged = useCallback(() => privilegedRef.current, []);
 
-  // --- Dashboard-level stubs this standalone tab doesn't have yet -------
+  // --- Dashboard-level stubs this overlay doesn't have yet ---------------
   const closeOtherNavPanels = useCallback((_exceptKey: string) => {}, []);
   const [screenLoading, setScreenLoading] = useState<{ show: boolean; text?: string }>({ show: false });
   const beginScreenLoading = useCallback((text?: string) => setScreenLoading({ show: true, text }), []);
@@ -181,87 +173,89 @@ export default function RoomsScreen() {
   };
 
   return (
-    <View style={styles.screen}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Rooms</Text>
-        <Pressable style={styles.createBtn} onPress={() => setShowCreate((v) => !v)}>
-          <Ionicons name={showCreate ? 'close' : 'add'} size={18} color="#000000" />
-        </Pressable>
-      </View>
-
-      {showCreate && (
-        <View style={styles.createRow}>
-          <TextInput
-            style={styles.createInput}
-            value={newRoomName}
-            onChangeText={setNewRoomName}
-            placeholder="Room name"
-            placeholderTextColor="#71717a"
-            maxLength={30}
-            onSubmitEditing={handleCreateRoom}
-          />
-          <Pressable
-            style={[styles.createSubmit, (!newRoomName.trim() || creating) && styles.createSubmitDisabled]}
-            onPress={handleCreateRoom}
-            disabled={!newRoomName.trim() || creating}
-          >
-            <Text style={styles.createSubmitText}>{creating ? '...' : 'Create'}</Text>
+    <PersistentSlide show={show} style={styles.screen}>
+      <View style={styles.screen}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Rooms</Text>
+          <Pressable style={styles.createBtn} onPress={() => setShowCreate((v) => !v)}>
+            <Ionicons name={showCreate ? 'close' : 'add'} size={18} color="#000000" />
           </Pressable>
         </View>
-      )}
 
-      {!loading && rooms.length === 0 ? (
-        <View style={styles.centerFill}>
-          <Text style={styles.emptyText}>No rooms yet - create one!</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={rooms}
-          keyExtractor={(item) => String(item.id)}
-          numColumns={2}
-          columnWrapperStyle={styles.row}
-          contentContainerStyle={styles.listContent}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#ffffff" />}
-          renderItem={({ item }) => (
-            <RoomCard room={item} onPress={() => roomState.openRoom(item as any)} />
-          )}
-        />
-      )}
+        {showCreate && (
+          <View style={styles.createRow}>
+            <TextInput
+              style={styles.createInput}
+              value={newRoomName}
+              onChangeText={setNewRoomName}
+              placeholder="Room name"
+              placeholderTextColor="#71717a"
+              maxLength={30}
+              onSubmitEditing={handleCreateRoom}
+            />
+            <Pressable
+              style={[styles.createSubmit, (!newRoomName.trim() || creating) && styles.createSubmitDisabled]}
+              onPress={handleCreateRoom}
+              disabled={!newRoomName.trim() || creating}
+            >
+              <Text style={styles.createSubmitText}>{creating ? '...' : 'Create'}</Text>
+            </Pressable>
+          </View>
+        )}
 
-      {roomState.activeRoom && (
-        <RoomChatWindow
-          activeRoom={roomState.activeRoom}
-          show={roomState.roomScreenVisible}
-          roomMessages={roomState.roomMessages}
-          onClose={roomState.minimizeRoom}
-          onExit={roomState.exitRoom}
-          onSwitchRoom={() => {
-            roomState.minimizeRoom();
-            setShowCreate(false);
-            loadRooms({ silent: true });
-          }}
-          getMyId={getMyId}
-          onViewProfile={() => showAlert('Viewing profiles from a room is coming soon.', 'info')}
-          onTip={() => showAlert('Tipping in a room is coming soon.', 'info')}
-          members={roomState.roomMembers}
-          onKick={roomState.handleKickUser}
-          onSetRadio={roomState.handleSetRoomRadio}
-          typingUsers={roomState.roomTypingUsers}
-          onBan={roomState.handleBanUser}
-          onOpenBannedList={roomState.openBannedList}
-          showBannedList={roomState.showBannedList}
-          onCloseBannedList={() => roomState.setShowBannedList(false)}
-          bannedUsers={roomState.bannedUsers}
-          bannedListLoading={roomState.bannedListLoading}
-          onUnban={roomState.handleUnbanUser}
-          roomPositions={roomState.roomPositions}
-          isPrivileged={isPrivileged}
-          onRoomSaved={() => loadRooms({ silent: true })}
-        />
-      )}
+        {!loading && rooms.length === 0 ? (
+          <View style={styles.centerFill}>
+            <Text style={styles.emptyText}>No rooms yet - create one!</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={rooms}
+            keyExtractor={(item) => String(item.id)}
+            numColumns={2}
+            columnWrapperStyle={styles.row}
+            contentContainerStyle={styles.listContent}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#ffffff" />}
+            renderItem={({ item }) => (
+              <RoomCard room={item} onPress={() => roomState.openRoom(item as any)} />
+            )}
+          />
+        )}
 
-      <LoadingOverlay show={screenLoading.show} text={screenLoading.text} />
-    </View>
+        {roomState.activeRoom && (
+          <RoomChatWindow
+            activeRoom={roomState.activeRoom}
+            show={roomState.roomScreenVisible}
+            roomMessages={roomState.roomMessages}
+            onClose={roomState.minimizeRoom}
+            onExit={roomState.exitRoom}
+            onSwitchRoom={() => {
+              roomState.minimizeRoom();
+              setShowCreate(false);
+              loadRooms({ silent: true });
+            }}
+            getMyId={getMyId}
+            onViewProfile={() => showAlert('Viewing profiles from a room is coming soon.', 'info')}
+            onTip={() => showAlert('Tipping in a room is coming soon.', 'info')}
+            members={roomState.roomMembers}
+            onKick={roomState.handleKickUser}
+            onSetRadio={roomState.handleSetRoomRadio}
+            typingUsers={roomState.roomTypingUsers}
+            onBan={roomState.handleBanUser}
+            onOpenBannedList={roomState.openBannedList}
+            showBannedList={roomState.showBannedList}
+            onCloseBannedList={() => roomState.setShowBannedList(false)}
+            bannedUsers={roomState.bannedUsers}
+            bannedListLoading={roomState.bannedListLoading}
+            onUnban={roomState.handleUnbanUser}
+            roomPositions={roomState.roomPositions}
+            isPrivileged={isPrivileged}
+            onRoomSaved={() => loadRooms({ silent: true })}
+          />
+        )}
+
+        <LoadingOverlay show={screenLoading.show} text={screenLoading.text} />
+      </View>
+    </PersistentSlide>
   );
 }
 

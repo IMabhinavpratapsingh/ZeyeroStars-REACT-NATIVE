@@ -2,7 +2,7 @@ import React, { memo } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import CommunityAvatar from './CommunityAvatar';
+import useCommunityIcon from '../../../shared/hooks/useCommunityIcon';
 import useAvatarImage from '../../avatar/hooks/useAvatarImage';
 
 interface CommunityCardProps {
@@ -25,11 +25,22 @@ interface CommunityCardProps {
 // ki pfp, naam neeche gradient par, footer me members + category strip.
 const CommunityCard = ({ community, onPress }: CommunityCardProps) => {
   const ownerAvatarSrc = useAvatarImage(community.owner_id, community.owner_avatar_url, community.owner_avatar_version);
+  // Banner ab CommunityAvatar (chhota fixed-size chip) nahi - poora banner
+  // hi community ke icon ki cover image honi chahiye ("Amino-jaisa" full
+  // photo card), CommunityAvatar sirf chhoti jagah (header/list-row) ke
+  // liye theek hai.
+  const iconSrc = useCommunityIcon(community.id, community.icon_id, community.icon_url);
 
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.wrap, pressed && styles.pressed]}>
       <View style={styles.banner}>
-        <CommunityAvatar communityId={community.id} iconId={community.icon_id} iconUrl={community.icon_url} size="xl" />
+        {iconSrc ? (
+          <Image source={typeof iconSrc === 'string' ? { uri: iconSrc } : iconSrc} style={styles.bannerImg} resizeMode="cover" />
+        ) : (
+          <View style={styles.bannerFallback}>
+            <Ionicons name="people" size={40} color="#4a4a4a" />
+          </View>
+        )}
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <View style={styles.ownerBadge}>
             {ownerAvatarSrc ? (
@@ -72,6 +83,8 @@ const styles = StyleSheet.create({
   wrap: { flex: 1, borderRadius: 12, overflow: 'hidden', borderWidth: 2, borderColor: '#2a2a2a' },
   pressed: { opacity: 0.85 },
   banner: { width: '100%', aspectRatio: 3 / 4, backgroundColor: '#161616' },
+  bannerImg: { width: '100%', height: '100%' },
+  bannerFallback: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
   ownerBadge: {
     position: 'absolute',
     top: 8,

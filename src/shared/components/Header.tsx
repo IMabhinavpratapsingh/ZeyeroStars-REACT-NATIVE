@@ -110,8 +110,8 @@ const styles = StyleSheet.create({
     gap: 8,
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#1e1e2a', // star-800
-    backgroundColor: '#141420', // star-900
+    borderBottomColor: '#000000', // star-800
+    backgroundColor: '#000000', // star-900
   },
   iconBtn: {
     width: 44,
@@ -122,10 +122,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   iconBtnPlain: {
-    backgroundColor: '#2a2a38', // star-700
+    backgroundColor: '#000000', // star-700
   },
   iconBtnActive: {
-    backgroundColor: '#4f46e5', // star-primary-600
+    backgroundColor: '#000000', // star-primary-600
   },
   iconBtnPressed: {
     opacity: 0.85,

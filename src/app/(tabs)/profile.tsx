@@ -129,7 +129,7 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#000000' },
   centerFill: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000000' },
-  content: { paddingTop: 60, paddingHorizontal: 24, paddingBottom: 40, alignItems: 'center' },
+  content: { paddingTop: 16, paddingHorizontal: 24, paddingBottom: 40, alignItems: 'center' },
   avatarWrap: { width: '100%', maxWidth: 260, marginBottom: 16 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
   username: { color: '#ffffff', fontSize: 20, fontWeight: '700' },

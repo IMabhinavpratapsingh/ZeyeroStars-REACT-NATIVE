@@ -27,28 +27,14 @@ const NavButton = ({ label, icon, onPress, badge = 0, active }: NavButtonProps) 
   </Pressable>
 );
 
-// Home slot plain nav icon nahi - yeh khud "+" quick-actions FAB hai:
-//   - Home/feed screen par ho aur sheet band ho  -> "+" (tap => sheet khulta hai)
-//   - Home par ho aur sheet khuli ho              -> "×" (tap => sheet band hoti hai)
-//   - Kisi aur screen (Rooms/DM/Shop/Game) par ho -> "×" (tap => seedha Home wapas aa jaate hain)
-// Black background, white icon + white border - protruding (upar nikla
-// hua) rounded-square button.
-//
-// WEB -> RN CHANGE:
-// Web version yeh button `createPortal(document.body)` se mount karta
-// tha + `useViewportKeyboard`'s `stableHeight` se manually "top" position
-// calculate karta tha - sirf isliye ki Dashboard root ka `overflow-hidden`
-// (WebView mein) fixed children ko clip kar deta tha, AUR taaki Android
-// keyboard resize se button upar na uchhal jaaye.
-// RN mein dono wajah khatam ho jaati hain:
-//   1. RN Views clip nahi karti jab tak khud `overflow: 'hidden'` na ho -
-//      koi WebView-jaisा global clipping issue hai hi nahi.
-//   2. Yeh button BottomNav ke andar hi (screen layout ka normal hissa)
-//      render hota hai, `position: 'absolute'` se sirf nav-bar ke upar
-//      protrude karta hai - `useViewportKeyboard`/portal ki zaroorat
-//      nahi. (Jab room-chat jaisi screen mein keyboard khulta hai, woh
-//      screen aam taur par apna khud ka nav-less full-screen view hota
-//      hai, isliye BottomNav us waqt anyway mounted nahi hota.)
+// Home slot ab ek NORMAL bottom-nav button hai (baaki icons jaisa hi,
+// beech mein) - "+" / "X" bas iska icon hai:
+//   - Home par ho aur sheet band ho  -> "+" (tap => sheet khulta hai)
+//   - Home par ho aur sheet khuli ho -> "×" (tap => sheet band hoti hai)
+//   - Kisi aur tab par ho            -> "×" (tap => seedha Home wapas)
+// (Pehle yeh nav-bar ke UPAR protrude karne wala floating circular FAB
+// tha - ab request par baaki 4 buttons ki tarah bar ke andar hi, beech
+// mein fit hota hai, koi position:absolute/overflow nahi.)
 const HomeActionButton = ({
   isHomeActive,
   sheetOpen,
@@ -64,21 +50,28 @@ const HomeActionButton = ({
 }) => {
   const showAsClose = sheetOpen || !isHomeActive;
 
+  if (hidden) {
+    return <View style={styles.navButton} />;
+  }
+
   return (
-    <View style={styles.navButton}>
-      <View style={styles.homeSpacer} />
-      <Text style={styles.navLabel}>Home</Text>
-      {!hidden && (
-        <Pressable
-          onPress={onPress}
-          accessibilityLabel={showAsClose ? 'Close / go home' : 'Open quick actions'}
-          style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
-        >
-          {showAsClose ? <Ionicons name="close" size={20} color="#fff" /> : <Ionicons name="add" size={22} color="#fff" />}
-          {badge ? <View style={styles.fabBadge} /> : null}
-        </Pressable>
-      )}
-    </View>
+    <Pressable
+      onPress={onPress}
+      accessibilityLabel={showAsClose ? 'Close / go home' : 'Open quick actions'}
+      style={({ pressed }) => [styles.navButton, pressed && styles.homeButtonPressed]}
+    >
+      <View style={styles.iconWrap}>
+        {showAsClose ? (
+          <Ionicons name="close" size={24} color="#ffffff" />
+        ) : (
+          <Ionicons name="add" size={26} color="#ffffff" />
+        )}
+        {badge ? <View style={styles.fabBadge} /> : null}
+      </View>
+      <Text style={[styles.navLabel, isHomeActive && styles.navLabelActive]} numberOfLines={1}>
+        Home
+      </Text>
+    </Pressable>
   );
 };
 
@@ -144,12 +137,10 @@ const BottomNav = ({
   );
 };
 
-const FAB_SIZE = 48;
-
 const styles = StyleSheet.create({
   bar: {
     height: BOTTOM_NAV_PX,
-    backgroundColor: '#141420', // star-900
+    backgroundColor: '#000000', // star-900
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     flexDirection: 'row',
@@ -205,31 +196,8 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
   },
-  homeSpacer: {
-    width: 44,
-    height: 44,
-    marginBottom: 2,
-  },
-  fab: {
-    position: 'absolute',
-    top: -(FAB_SIZE / 2 + 10), // nav-bar ke upar protrude
-    width: FAB_SIZE,
-    height: FAB_SIZE,
-    borderRadius: 16,
-    backgroundColor: '#000',
-    borderWidth: 2,
-    borderColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.5,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 12,
-  },
-  fabPressed: {
-    transform: [{ scale: 0.95 }],
-    backgroundColor: '#141420', // star-900
+  homeButtonPressed: {
+    opacity: 0.7,
   },
   fabBadge: {
     position: 'absolute',

@@ -187,7 +187,7 @@ const CommunityDetailScreen = ({
 
   if (!community) {
     return (
-      <SlideInRight show={show} style={[styles.overlay, { zIndex, elevation: zIndex }]}>
+      <SlideInRight show={show} bouncy={false} style={[styles.overlay, { zIndex, elevation: zIndex }]}>
         <View style={styles.header}>
           <Pressable onPress={onClose} hitSlop={10}>
             <Ionicons name="arrow-back" size={18} color="#fff" />
@@ -199,7 +199,7 @@ const CommunityDetailScreen = ({
 
   return (
     <>
-      <SlideInRight show={show} style={[styles.overlay, { zIndex, elevation: zIndex }]}>
+      <SlideInRight show={show} bouncy={false} style={[styles.overlay, { zIndex, elevation: zIndex }]}>
         <View style={styles.header}>
           <Pressable onPress={onClose} hitSlop={10}>
             <Ionicons name="arrow-back" size={18} color="#fff" />

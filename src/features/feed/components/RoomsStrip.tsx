@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getActiveRooms } from '../../rooms/services/roomsApi';
@@ -26,6 +26,14 @@ export interface MyRoom {
  */
 const sortTeamRoomsFirst = (rooms: StripRoom[]) =>
   [...rooms].sort((a, b) => (b.is_team ? 1 : 0) - (a.is_team ? 1 : 0));
+
+// MODULE-LEVEL CACHE: dashboard.tsx (jiske andar yeh strip hai) Slot-based
+// tab-switch par unmount/remount hota hai - isliye pehle Rooms/DM/Profile
+// se Home wapas aate hi yeh poori strip refetch ho jaati thi. Ab pehli
+// baar hi network call hoga; baad ke mounts cache se turant hydrate honge.
+// Sirf explicit refresh (refreshSignal badalna - jo ab Home ke
+// pull-to-refresh se aata hai) fresh backend hit karta hai.
+let roomsCache: { rooms: StripRoom[]; loadedOnce: boolean } = { rooms: [], loadedOnce: false };
 
 /**
  * Feed ke bilkul upar dikhne wala horizontal strip - "Your Room" card +
@@ -61,14 +69,21 @@ const RoomsStrip = ({
   onOpenRoomDirect,
   refreshSignal,
 }: RoomsStripProps) => {
-  const [allRooms, setAllRooms] = useState<StripRoom[]>([]);
+  const [allRooms, setAllRooms] = useState<StripRoom[]>(roomsCache.rooms);
   const [refreshing, setRefreshing] = useState(false);
+  // refreshSignal ki PEHLI value ko baseline maan lo - us par fetch mat
+  // karo (yeh sirf mount hai), sirf JAB yeh badle (asli pull-to-refresh)
+  // tabhi network hit karo.
+  const prevRefreshSignal = useRef(refreshSignal);
 
   const loadRooms = useCallback(async () => {
     setRefreshing(true);
     try {
       const res = await getActiveRooms();
-      setAllRooms(res.data?.rooms || []);
+      const rooms = res.data?.rooms || [];
+      setAllRooms(rooms);
+      roomsCache.rooms = rooms;
+      roomsCache.loadedOnce = true;
     } catch (err: any) {
       console.error('Active rooms fetch error:', err.response?.data || err.message);
     } finally {
@@ -77,9 +92,18 @@ const RoomsStrip = ({
   }, []);
 
   useEffect(() => {
-    loadRooms();
-    // refreshSignal Dashboard se aata hai - app fresh open/resume hote hi
-    // badalta hai, taaki yeh strip bhi fresh data dikhaye.
+    if (!roomsCache.loadedOnce) {
+      // Pehli baar hi (poori app mein) - fresh fetch.
+      loadRooms();
+      return;
+    }
+    if (prevRefreshSignal.current !== refreshSignal) {
+      // Asli pull-to-refresh (Home screen se refreshSignal badla).
+      prevRefreshSignal.current = refreshSignal;
+      loadRooms();
+    }
+    // Warna (sirf remount hua, refreshSignal wahi hai) - cache se hydrate
+    // ho hi chuka hai upar useState mein, kuch nahi karna.
   }, [loadRooms, refreshSignal]);
 
   const visibleRooms = useMemo(() => sortTeamRoomsFirst(allRooms), [allRooms]);

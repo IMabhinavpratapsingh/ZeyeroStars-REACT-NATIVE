@@ -1,7 +1,14 @@
-import React, { type ReactNode } from 'react';
+import React, { type ReactNode, useEffect } from 'react';
 import { AnimatePresence, MotiView } from 'moti';
-import type { ViewStyle, StyleProp } from 'react-native';
-import { Easing } from 'react-native-reanimated';
+import { StyleSheet, useWindowDimensions, type ViewStyle, type StyleProp } from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
+import useTopZIndex from '../../hooks/useTopZIndex';
+import { BOTTOM_NAV_PX } from '../../constants/layout';
 
 // Shared Motion primitives - taaki har modal mein transition config baar
 // baar copy-paste na karna pade. Har ek AnimatePresence khud carry karta
@@ -92,14 +99,18 @@ export const SlideUp = ({ show, children, style }: TransitionProps) => (
 // value chahiye. Ideally isse prop bana ke drawer ki actual width pass
 // karo; yahan safe default 400px (zyadatar drawer/bottom-sheet widths se
 // bada) diya hai.
-export const SlideInRight = ({ show, children, style }: TransitionProps) => (
+export const SlideInRight = ({ show, children, style, bouncy = true }: TransitionProps & { bouncy?: boolean }) => (
   <AnimatePresence>
     {show && (
       <MotiView
         from={{ translateX: 400 }}
         animate={{ translateX: 0 }}
         exit={{ translateX: 400 }}
-        transition={{ type: 'spring', stiffness: 320, damping: 34 }}
+        transition={
+          bouncy
+            ? { type: 'spring', stiffness: 320, damping: 34 }
+            : { type: 'timing', duration: 240, easing: Easing.out(Easing.cubic) }
+        }
         style={style}
       >
         {children}
@@ -146,3 +157,62 @@ export const PopIn = ({ show, children, style }: TransitionProps) => (
     )}
   </AnimatePresence>
 );
+
+// ---------------------------------------------------------------------------
+// PersistentSlide - DM/Rooms tabs jaisi PERSISTENT full-screen overlay ke
+// liye (CommunityListScreen/SlideInRight se ALAG banaya, jaan-boojh kar):
+//
+// SlideInRight (upar) `{show && <MotiView/>}` pattern use karta hai - iska
+// matlab `show=false` hote hi (exit animation ke baad) MotiView poori tarah
+// UNMOUNT ho jaata hai. Community list ke liye theek hai (khud ek module-level
+// cache resource se instant re-render kar leta hai), lekin DM/Rooms ke andar
+// live state hai (open chat, WebSocket-driven room floor, inbox scroll
+// position) jo remount par kho jaata - EXACTLY wahi "tab switch par sab kuch
+// dobara load hota hai" wala bug jo _layout.tsx ke Tabs->Slot fix ne pehle
+// solve kiya tha. Isliye PersistentSlide children ko KABHI unmount nahi
+// karta - hamesha mounted rehte hain (state safe), sirf translateX se
+// slide + `pointerEvents` se hidden state mein touches ko block karta hai.
+//
+// Isi wajah se yeh Community ke `SlideInRight` (Moti/AnimatePresence) se
+// nahi, balki seedha Reanimated (`useSharedValue`/`withTiming`) se likha
+// hai - bilkul wahi technique jo `(tabs)/_layout.tsx` ke tab-switch slide
+// mein already use ho rahi hai (isliye feel bhi wahi consistent-smooth
+// hoga, koi nayi dependency bhi nahi chahiye).
+export const PersistentSlide = ({ show, children, style }: TransitionProps) => {
+  const { width } = useWindowDimensions();
+  const zIndex = useTopZIndex(show);
+  const translateX = useSharedValue(show ? 0 : width);
+
+  useEffect(() => {
+    translateX.value = withTiming(show ? 0 : width, {
+      duration: 260,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [show, width, translateX]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+  }));
+
+  return (
+    <Animated.View
+      pointerEvents={show ? 'auto' : 'none'}
+      // BOTTOM_NAV_PX: CommunityListScreen jaisa hi - `bottom: 0` NAHI,
+      // taaki BottomNav (jo neeche, is overlay ke peeche render hota hai)
+      // hamesha dikhta rahe, Community mein jaisa dikhta hai waisa hi.
+      style={[styles.persistentOverlay, { bottom: BOTTOM_NAV_PX, zIndex, elevation: zIndex }, animatedStyle, style]}
+    >
+      {children}
+    </Animated.View>
+  );
+};
+
+const styles = StyleSheet.create({
+  persistentOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#000000',
+  },
+});

@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { useRouter, usePathname } from 'expo-router';
 import { getMyId } from '../../shared/utils/auth';
 import { showAlert } from '../../shared/utils/alertBus';
 import useUserCache from '../../shared/hooks/useUserCache';
 import useNotification from '../../shared/hooks/useNotification';
 import useWebSocket from '../../shared/hooks/useWebSocket';
+import useBackButtonHandler from '../../shared/hooks/useBackButtonHandler';
 import useInboxState from '../../features/dashboard/hooks/useInboxState';
 import useDMState from '../../features/dashboard/hooks/useDMState';
 import InboxModal from '../../features/dm/components/InboxModal';
@@ -21,6 +23,14 @@ import DMChatWindow from '../../features/dm/components/DMChatWindow';
 // "coming soon" hai (TipModal wiring agla pass), trade-in-chat bhi abhi
 // wire nahi hai (activeTrade/onTradeRequest waghera undefined chhode hain).
 export default function DMScreen() {
+  const router = useRouter();
+  // Rooms tab jaisa hi - pathname se focus check (Tabs mount rakhta hai,
+  // background tab back-press hijack na kare). Focused par native back
+  // -> Dashboard.
+  const pathname = usePathname();
+  const isFocused = pathname.includes('/dm');
+  useBackButtonHandler(isFocused, useCallback(() => router.push('/(tabs)/dashboard'), [router]));
+
   const [showInbox, setShowInbox] = useState(true);
   const { cacheUser, getUsername } = useUserCache();
   const { notif, showNotification, clearForUser } = useNotification();

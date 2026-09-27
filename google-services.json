@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "873276585181",
+    "project_id": "zeyerostars-0",
+    "storage_bucket": "zeyerostars-0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:873276585181:android:96eef9b7d2a31976be1734",
+        "android_client_info": {
+          "package_name": "com.zeyerostars.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDS7KKdTUA1mC7ry38mqlegv8N81vIJlY0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

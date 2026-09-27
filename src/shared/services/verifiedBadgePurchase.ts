@@ -95,7 +95,12 @@ export function initVerifiedBadgeStore(): Promise<void> {
         // NOTE: capacitor wale flow me transaction.verify() ka dummy
         // (khali) receipt aata tha jisse productId galat nikalta tha -
         // isliye productId + purchaseToken seedha purchase object se lo.
-        const token = purchase.purchaseTokenAndroid;
+        // TODO: react-native-iap v12 ke naye types mein field ka naam badal
+        // gaya hai (purchaseTokenAndroid ab shayad `purchaseToken` ya
+        // `purchase.android?.purchaseToken` ke andar hai) - `as any` se
+        // abhi ke liye unblock kiya hai, installed lib ke actual runtime
+        // shape se verify karke sahi field lagana.
+        const token = (purchase as any).purchaseTokenAndroid ?? (purchase as any).purchaseToken;
         const productId = purchase.productId;
 
         if (!token) {
@@ -189,9 +194,12 @@ export function teardownVerifiedBadgeStore() {
 export function getProductPrice(productId: string): string | null {
   if (!initialized) return null;
   const sub = subscriptions.find((s) => s.productId === productId);
-  if (sub) return sub.localizedPrice ?? null;
+  // TODO: same as purchaseToken above - v12 types mein subscription price
+  // ab `subscriptionOfferDetails[].pricingPhases` ke andar nested ho sakti
+  // hai, seedha `localizedPrice` nahi. `as any` se abhi unblock kiya hai.
+  if (sub) return (sub as any).localizedPrice ?? null;
   const prod = products.find((p) => p.productId === productId);
-  return prod?.localizedPrice ?? null;
+  return (prod as any)?.localizedPrice ?? null;
 }
 
 async function orderProduct(productId: string, isSubscription: boolean, onErr: ((msg: string) => void) | null) {

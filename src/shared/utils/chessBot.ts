@@ -81,7 +81,7 @@ export function pickBotMove(chess: Chess, difficulty: ChessDifficulty): Move | n
   if (moves.length === 0) return null;
 
   if (difficulty === 'easy') {
-    const captures = moves.filter((m: { captured: any; }) => m.captured);
+    const captures = moves.filter((m: Move) => m.captured);
     const pool = captures.length && Math.random() < 0.35 ? captures : moves;
     return pool[Math.floor(Math.random() * pool.length)];
   }

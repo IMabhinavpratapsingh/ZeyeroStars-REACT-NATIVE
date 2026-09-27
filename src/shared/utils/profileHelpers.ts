@@ -16,14 +16,14 @@ export const getProfile = (item: { players?: PlayerProfile | PlayerProfile[] } |
 // hai, poore app ke liye).
 export const getEquippedByCategory = (
   equippedItems: (string | number)[] | null | undefined,
-  itemsById: Record<string | number, { item_category?: string }>
+  itemsById: Record<string | number, any>
 ): Record<string, (string | number)[] | string | number> => {
   const equippedByCategory: Record<string, (string | number)[] | string | number> = {};
   (equippedItems || []).forEach((id) => {
     const item = itemsById[id];
     if (!item?.item_category) return;
     const cat = item.item_category;
-    if (MULTI_SELECT_CATEGORIES.includes(cat)) {
+    if ((MULTI_SELECT_CATEGORIES as readonly string[]).includes(cat)) {
       if (!equippedByCategory[cat]) equippedByCategory[cat] = [];
       (equippedByCategory[cat] as (string | number)[]).push(id);
     } else {

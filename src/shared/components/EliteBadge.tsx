@@ -38,7 +38,7 @@ interface EliteBadgeProps {
 
 const EliteBadge = ({ size = 'md', shine = true, title = 'Elite' }: EliteBadgeProps) => {
   const px = SIZE_PX[size] || SIZE_PX.md;
-  const uidRef = useRef<string>();
+  const uidRef = useRef<string | undefined>(undefined);
   if (!uidRef.current) uidRef.current = `ebadge-${++__badgeUid}`;
   const uid = uidRef.current;
 

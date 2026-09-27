@@ -135,7 +135,7 @@ export default function useRoomState({
 
   const openRoom = useCallback(
     async (room: ActiveRoom) => {
-      if (!room?.id || !networkManager.ws) return;
+      if (!room?.id || !networkManager.isConnected()) return;
 
       // Already isi room mein hain - bas screen wapas dikha do (Highrise
       // jaisa: room ek baar join hone ke baad kahin bhi ghoomo, "Rooms"
@@ -152,7 +152,7 @@ export default function useRoomState({
 
       if (roomSwitchPendingRef.current) return;
 
-      const hadPreviousRoom = !!(activeRoomRef.current && networkManager.ws);
+      const hadPreviousRoom = !!(activeRoomRef.current && networkManager.isConnected());
       if (hadPreviousRoom) {
         networkManager.send({ type: 'room_leave', room_id: activeRoomRef.current!.id });
       }
@@ -201,7 +201,7 @@ export default function useRoomState({
 
   /** Room se ASAL mein nikalna - "Exit Room" button (ya kick) se hi chalta hai. */
   const exitRoom = useCallback(() => {
-    if (activeRoomRef.current && networkManager.ws) {
+    if (activeRoomRef.current && networkManager.isConnected()) {
       networkManager.send({ type: 'room_leave', room_id: activeRoomRef.current.id });
     }
     setActiveRoomBoth(null);
@@ -224,7 +224,7 @@ export default function useRoomState({
   }, [closeOtherNavPanels]);
 
   const handleSetRoomRadio = useCallback((station: { name: string; url: string }) => {
-    if (!activeRoomRef.current || !networkManager.ws) return;
+    if (!activeRoomRef.current || !networkManager.isConnected()) return;
     networkManager.send({
       type: 'room_set_radio',
       room_id: activeRoomRef.current.id,
@@ -234,17 +234,17 @@ export default function useRoomState({
   }, []);
 
   const handleKickUser = useCallback((targetId: string | number) => {
-    if (!activeRoomRef.current || !networkManager.ws) return;
+    if (!activeRoomRef.current || !networkManager.isConnected()) return;
     networkManager.send({ type: 'room_kick', room_id: activeRoomRef.current.id, target_id: targetId });
   }, []);
 
   const handleBanUser = useCallback((targetId: string | number) => {
-    if (!activeRoomRef.current || !networkManager.ws) return;
+    if (!activeRoomRef.current || !networkManager.isConnected()) return;
     networkManager.send({ type: 'room_ban', room_id: activeRoomRef.current.id, target_id: targetId });
   }, []);
 
   const handleUnbanUser = useCallback((targetId: string | number) => {
-    if (!activeRoomRef.current || !networkManager.ws) return;
+    if (!activeRoomRef.current || !networkManager.isConnected()) return;
     networkManager.send({ type: 'room_unban', room_id: activeRoomRef.current.id, target_id: targetId });
     // Optimistic - list se turant hata do, ban_unack aane par backend ke saath consistent ho hi jaayega.
     setBannedUsers((prev) => prev.filter((u) => String(u.user_id) !== String(targetId)));

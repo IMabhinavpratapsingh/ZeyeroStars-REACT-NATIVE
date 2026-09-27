@@ -242,7 +242,7 @@ const RankRewardsScreen = ({
                       {isCoins ? (
                         <Ionicons name="cash-outline" size={22} color="#eab308" />
                       ) : item ? (
-                        <AvatarItemThumb url={iconUrl} alt={item.item_name} />
+                        <AvatarItemThumb asset={iconUrl} alt={item.item_name} />
                       ) : (
                         <Ionicons name="ribbon-outline" size={20} color="#71717a" />
                       )}

@@ -128,7 +128,7 @@ export async function setupPushNotifications(): Promise<void> {
     });
 
     // User ne notification tap karke app open kiya.
-    responseSub = Notifications.addNotificationResponseReceivedListener((response: { notification: { request: { content: { data: PushTapData; }; }; }; }) => {
+    responseSub = Notifications.addNotificationResponseReceivedListener((response: any) => {
       dispatchTap(response.notification.request.content.data as PushTapData);
     });
 

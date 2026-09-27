@@ -164,7 +164,7 @@ export default function useInboxState({ cacheUser, closeOtherNavPanels }: UseInb
   const applyInboxFetchResult = useCallback(
     (result: InboxSnapshot | null, versionAtFetch?: number) => {
       if (!result) return;
-      result.list.forEach(cacheUser);
+      result.list.forEach((row) => cacheUser({ ...row, id: row.target_id }));
       if (versionAtFetch !== undefined && inboxRealtimeVersionRef.current !== versionAtFetch) {
         // Beech mein koi live websocket update aa chuka hai - yeh REST
         // response ab stale hai, list par apply mat karo.
@@ -190,7 +190,7 @@ export default function useInboxState({ cacheUser, closeOtherNavPanels }: UseInb
         params: { offset: 0, limit: INBOX_PAGE_SIZE },
       });
       const list: InboxRow[] = (res.data.requests || []).map((r: any) => ({ ...r, _isRequest: true }));
-      list.forEach(cacheUser);
+      list.forEach((row) => cacheUser({ ...row, id: row.target_id }));
       setRequestsList(list);
       setRequestsOffset(list.length);
       setRequestsHasMore(!!res.data.has_more);
@@ -211,7 +211,7 @@ export default function useInboxState({ cacheUser, closeOtherNavPanels }: UseInb
         params: { offset: 0, limit: INBOX_PAGE_SIZE },
       });
       const list: InboxRow[] = (res.data.requests || []).map((r: any) => ({ ...r, _isRequest: true }));
-      list.forEach(cacheUser);
+      list.forEach((row) => cacheUser({ ...row, id: row.target_id }));
       setRequestsList(list);
       setRequestsOffset(list.length);
       setRequestsHasMore(!!res.data.has_more);
@@ -237,7 +237,7 @@ export default function useInboxState({ cacheUser, closeOtherNavPanels }: UseInb
       });
       setRequestsOffset((prev) => prev + newList.length);
       setRequestsHasMore(!!res.data.has_more);
-      newList.forEach(cacheUser);
+      newList.forEach((row) => cacheUser({ ...row, id: row.target_id }));
     } catch (err: any) {
       console.error('Requests load more error:', err?.response?.data || err?.message);
     } finally {
@@ -307,7 +307,7 @@ export default function useInboxState({ cacheUser, closeOtherNavPanels }: UseInb
       });
       setInboxOffset((prev) => prev + newList.length);
       setInboxHasMore(!!res.data.has_more);
-      newList.forEach(cacheUser);
+      newList.forEach((row) => cacheUser({ ...row, id: row.target_id }));
     } catch (err: any) {
       console.error('Inbox load more error:', err?.response?.data || err?.message);
     } finally {

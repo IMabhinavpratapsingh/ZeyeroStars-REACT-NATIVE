@@ -45,7 +45,7 @@ interface VerifiedBadgeProps {
 
 const VerifiedBadge = ({ size = 'md', shine = false, title = 'Verified' }: VerifiedBadgeProps) => {
   const px = SIZE_PX[size] || SIZE_PX.md;
-  const uidRef = useRef<string>();
+  const uidRef = useRef<string | undefined>(undefined);
   if (!uidRef.current) uidRef.current = `vbadge-${++__badgeUid}`;
   const uid = uidRef.current;
 

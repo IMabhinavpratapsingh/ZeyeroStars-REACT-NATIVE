@@ -389,7 +389,7 @@ export default function useDMState({
         inbox.setInboxList((prev: InboxRow[]) => prev.filter((d) => String(d.target_id) !== String(targetId)));
         if (row?.unread_count) {
           inbox.setDmUnread((prev: any) => ({
-            total_messages: Math.max(0, prev.total_messages - row.unread_count),
+            total_messages: Math.max(0, prev.total_messages - (row.unread_count || 0)),
             senders_count: Math.max(0, prev.senders_count - 1),
           }));
         }

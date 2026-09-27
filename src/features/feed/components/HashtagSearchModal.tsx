@@ -132,7 +132,7 @@ const HashtagSearchModal = ({ show, onClose, onToggleLike }: HashtagSearchModalP
 };
 
 const styles = StyleSheet.create({
-  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: '#000000' },
+  overlay: { ...StyleSheet.absoluteFill, backgroundColor: '#000000' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

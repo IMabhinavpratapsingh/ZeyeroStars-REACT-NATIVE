@@ -250,6 +250,7 @@ const CommunityDetailScreen = ({
           onRefresh={loadFeed}
           onLoadMore={loadMore}
           onToggleLike={handleToggleLike}
+          showCommunityChip={false}
         />
       </SlideInRight>
 

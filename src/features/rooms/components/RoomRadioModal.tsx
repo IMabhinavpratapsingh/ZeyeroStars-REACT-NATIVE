@@ -6,7 +6,7 @@ import useBackButtonHandler from '../../../shared/hooks/useBackButtonHandler';
 import useTopZIndex from '../../../shared/hooks/useTopZIndex';
 import { searchRadioStations } from '../services/roomsApi';
 
-interface RadioStation {
+export interface RadioStation {
   name: string;
   [key: string]: any;
 }

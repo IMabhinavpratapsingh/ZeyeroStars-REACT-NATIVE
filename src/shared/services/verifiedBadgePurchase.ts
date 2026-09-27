@@ -2,16 +2,14 @@ import { Platform } from 'react-native';
 import {
   initConnection,
   endConnection,
-  requestSubscription,
   requestPurchase,
   finishTransaction,
   purchaseUpdatedListener,
   purchaseErrorListener,
-  getSubscriptions,
-  getProducts,
+  fetchProducts,
   type Purchase,
   type PurchaseError,
-  type Subscription,
+  type ProductSubscription,
   type Product,
 } from 'react-native-iap';
 import { verifyVerifiedSubscription } from './verifiedBadgeApi';
@@ -47,7 +45,7 @@ const Z_MONEY_PRODUCT_IDS = Z_MONEY_PRODUCTS.map((p) => p.id);
 
 let initialized = false;
 let initPromise: Promise<void> | null = null;
-let subscriptions: Subscription[] = [];
+let subscriptions: ProductSubscription[] = [];
 let products: Product[] = [];
 let purchaseUpdateSub: { remove: () => void } | null = null;
 let purchaseErrorSub: { remove: () => void } | null = null;
@@ -92,15 +90,9 @@ export function initVerifiedBadgeStore(): Promise<void> {
       await initConnection();
 
       purchaseUpdateSub = purchaseUpdatedListener(async (purchase: Purchase) => {
-        // NOTE: capacitor wale flow me transaction.verify() ka dummy
-        // (khali) receipt aata tha jisse productId galat nikalta tha -
-        // isliye productId + purchaseToken seedha purchase object se lo.
-        // TODO: react-native-iap v12 ke naye types mein field ka naam badal
-        // gaya hai (purchaseTokenAndroid ab shayad `purchaseToken` ya
-        // `purchase.android?.purchaseToken` ke andar hai) - `as any` se
-        // abhi ke liye unblock kiya hai, installed lib ke actual runtime
-        // shape se verify karke sahi field lagana.
-        const token = (purchase as any).purchaseTokenAndroid ?? (purchase as any).purchaseToken;
+        // react-native-iap v14: purchaseToken ab unified field hai (iOS/Android
+        // dono ke liye same naam), purchaseTokenAndroid wala split nahi raha.
+        const token = purchase.purchaseToken;
         const productId = purchase.productId;
 
         if (!token) {
@@ -156,14 +148,22 @@ export function initVerifiedBadgeStore(): Promise<void> {
       });
 
       try {
-        subscriptions = await getSubscriptions({ skus: [PRODUCT_ID] });
+        subscriptions =
+          ((await fetchProducts({
+            skus: [PRODUCT_ID],
+            type: 'subs',
+          })) as ProductSubscription[] | null) ?? [];
       } catch (e) {
-        console.error('[verifiedBadgePurchase] getSubscriptions failed:', e);
+        console.error('[verifiedBadgePurchase] fetchProducts (subs) failed:', e);
       }
       try {
-        products = await getProducts({ skus: Z_MONEY_PRODUCT_IDS });
+        products =
+          ((await fetchProducts({
+            skus: Z_MONEY_PRODUCT_IDS,
+            type: 'in-app',
+          })) as Product[] | null) ?? [];
       } catch (e) {
-        console.error('[verifiedBadgePurchase] getProducts failed:', e);
+        console.error('[verifiedBadgePurchase] fetchProducts (in-app) failed:', e);
       }
 
       initialized = true;
@@ -193,13 +193,12 @@ export function teardownVerifiedBadgeStore() {
  */
 export function getProductPrice(productId: string): string | null {
   if (!initialized) return null;
-  const sub = subscriptions.find((s) => s.productId === productId);
-  // TODO: same as purchaseToken above - v12 types mein subscription price
-  // ab `subscriptionOfferDetails[].pricingPhases` ke andar nested ho sakti
-  // hai, seedha `localizedPrice` nahi. `as any` se abhi unblock kiya hai.
-  if (sub) return (sub as any).localizedPrice ?? null;
-  const prod = products.find((p) => p.productId === productId);
-  return (prod as any)?.localizedPrice ?? null;
+  // v14: `id` naya field hai (purana `productId`), aur `displayPrice`
+  // naya field hai (purana `localizedPrice`).
+  const sub = subscriptions.find((s) => s.id === productId);
+  if (sub) return sub.displayPrice ?? null;
+  const prod = products.find((p) => p.id === productId);
+  return prod?.displayPrice ?? null;
 }
 
 async function orderProduct(productId: string, isSubscription: boolean, onErr: ((msg: string) => void) | null) {
@@ -216,9 +215,33 @@ async function orderProduct(productId: string, isSubscription: boolean, onErr: (
 
   try {
     if (isSubscription) {
-      await requestSubscription({ sku: productId });
+      // Naye react-native-iap version mein `subscriptionOfferDetailsAndroid`
+      // deprecated ho chuka hai - ab unified `subscriptionOffers` field hai,
+      // jiske Android-specific offer mein `offerTokenAndroid` hota hai.
+      const sub = subscriptions.find((s) => s.id === productId);
+      const offers = sub?.subscriptionOffers ?? [];
+      const offerTokens = offers
+        .map((o: any) => o.offerTokenAndroid)
+        .filter((t: string | undefined): t is string => !!t);
+      await requestPurchase({
+        request: {
+          google: {
+            skus: [productId],
+            ...(offerTokens.length > 0 && {
+              subscriptionOffers: offerTokens.map((offerToken) => ({
+                sku: productId,
+                offerToken,
+              })),
+            }),
+          },
+        },
+        type: 'subs',
+      });
     } else {
-      await requestPurchase({ skus: [productId] });
+      await requestPurchase({
+        request: { google: { skus: [productId] } },
+        type: 'in-app',
+      });
     }
   } catch (e: any) {
     console.error('[verifiedBadgePurchase] order failed:', e);

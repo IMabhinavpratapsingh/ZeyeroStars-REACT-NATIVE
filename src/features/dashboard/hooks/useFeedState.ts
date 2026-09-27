@@ -6,12 +6,22 @@ const FEED_PAGE_SIZE = 10;
 export interface FeedPost {
   id: string | number;
   user_id: string | number;
+  // Backend nests username/avatar/rank etc. under `players` (Supabase
+  // relation - object ya array, dono possible) - flat `username` field
+  // yahan bhejta hi nahi. getProfile() (shared/utils/profileHelpers) se
+  // isko flat profile object mein nikalo, seedha post.username mat padho.
+  players?: Record<string, any> | Record<string, any>[];
   username?: string;
   content?: string;
+  image_url?: string;
   created_at?: string;
   likes_count?: number;
   comments_count?: number;
   liked_by_me?: boolean;
+  hashtag?: string;
+  community_id?: string | number;
+  communities?: { name: string; icon_id?: string | number | null; icon_url?: string | null };
+  current_room?: { room_name: string; [key: string]: unknown };
   [key: string]: unknown;
 }
 

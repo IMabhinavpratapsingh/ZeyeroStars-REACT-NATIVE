@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   FlatList,
   Image,
@@ -9,18 +9,39 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import axios from 'axios';
 import { Ionicons } from '@expo/vector-icons';
 import { getActiveRooms, createRoom } from '../../features/rooms/services/roomsApi';
 import { showAlert } from '../../shared/utils/alertBus';
+import { API_BASE } from '../../shared/config/config';
+import { getToken } from '../../shared/services/NetworkManager';
+import { getMyId } from '../../shared/utils/auth';
+import useWebSocket from '../../shared/hooks/useWebSocket';
+import useRoomState from '../../features/dashboard/hooks/useRoomState';
+import RoomChatWindow from '../../features/rooms/components/RoomChatWindow';
+import LoadingOverlay from '../../shared/components/LoadingOverlay';
 
-// WEB -> RN SCOPE NOTE: Dashboard.jsx (web) ka "Rooms" slice yahan aa gaya,
-// lekin sirf BROWSE + CREATE hissa - actual room floor (avatar grid, chat,
-// chess panel, radio, item shop) RoomFloorView.tsx abhi khud stub hai
-// (useRoomState.ts already 500+ lines ban chuka hai, isko poori tarah
-// wire karne ke liye Dashboard-level shared state - isPrivileged,
-// closeOtherNavPanels, screenLoading overlay - bhi chahiye, jo agle
-// pass mein banega). Abhi room card tap karne par floor open nahi hota,
-// sirf "coming soon" dikhata hai.
+// WEB -> RN: Dashboard.jsx (web) ka "Rooms" slice - BROWSE + CREATE (jo
+// pehle se tha) + ab actual room FLOOR bhi (RoomChatWindow -> RoomFloorView,
+// chat, chess panel, radio, ban/kick, edit-room). useRoomState (already
+// likha hua tha, bas kahin instantiate nahi hua tha) yahan wire kiya hai -
+// same pattern jo dm.tsx mein useInboxState/useDMState ke liye use hua tha.
+//
+// SCOPE NOTE (dm.tsx jaisa hi): `closeOtherNavPanels` is standalone tab mein
+// no-op hai (koi "dusra panel" hai hi nahi is route ke andar). `isPrivileged`
+// yahan khud ek chhota self-profile fetch (is_verified || is_elite) se aata
+// hai (profile.tsx tab ka wahi /profile/{id} pattern) - koi shared
+// "my profile" hook abhi nahi hai. onViewProfile/onTip abhi "coming soon"
+// hain (ProfileViewModal/TipModal wiring alag pass) - dm.tsx mein tip bhi
+// isi tarah stub hai. onOpenSettings/onOpenCommunity optional hain, is pass
+// mein pass nahi kiye (community rooms is app se nikal diye gaye hain).
+//
+// IMPORTANT GAP (ye is file ke scope se bahar hai): poori app mein kahin
+// bhi `networkManager.connect()` call nahi hota (login.tsx ke baad na hi
+// _layout.tsx mein) - matlab socket hi open nahi hota, isliye yeh saari
+// room-floor wiring abhi runtime par "not connected" ki wajah se silently
+// no-op rahegi jab tak connect() kahin (login success + app boot pe) call
+// nahi hota. Yeh agla sabse zaroori chhota kaam hai.
 
 interface Room {
   id: number | string;
@@ -70,6 +91,46 @@ export default function RoomsScreen() {
   const [showCreate, setShowCreate] = useState(false);
   const [newRoomName, setNewRoomName] = useState('');
   const [creating, setCreating] = useState(false);
+
+  // --- isPrivileged: chhota self-profile fetch, ek baar mount par -------
+  const privilegedRef = useRef(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = getToken();
+        const myId = getMyId();
+        if (!myId) return;
+        const res = await axios.get(`${API_BASE}/profile/${myId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!cancelled) {
+          privilegedRef.current = !!(res.data?.is_verified || res.data?.is_elite);
+        }
+      } catch (err: any) {
+        console.error('Self profile (isPrivileged) fetch error:', err?.response?.data || err?.message);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const isPrivileged = useCallback(() => privilegedRef.current, []);
+
+  // --- Dashboard-level stubs this standalone tab doesn't have yet -------
+  const closeOtherNavPanels = useCallback((_exceptKey: string) => {}, []);
+  const [screenLoading, setScreenLoading] = useState<{ show: boolean; text?: string }>({ show: false });
+  const beginScreenLoading = useCallback((text?: string) => setScreenLoading({ show: true, text }), []);
+  const endScreenLoading = useCallback(() => setScreenLoading({ show: false }), []);
+
+  const roomState = useRoomState({
+    isPrivileged,
+    closeOtherNavPanels,
+    beginScreenLoading,
+    endScreenLoading,
+  });
+
+  useWebSocket(roomState.wsHandlers);
 
   const loadRooms = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     if (!silent) setLoading(true);
@@ -152,10 +213,44 @@ export default function RoomsScreen() {
           contentContainerStyle={styles.listContent}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#ffffff" />}
           renderItem={({ item }) => (
-            <RoomCard room={item} onPress={() => showAlert('Room floor coming soon.', 'info')} />
+            <RoomCard room={item} onPress={() => roomState.openRoom(item as any)} />
           )}
         />
       )}
+
+      {roomState.activeRoom && (
+        <RoomChatWindow
+          activeRoom={roomState.activeRoom}
+          show={roomState.roomScreenVisible}
+          roomMessages={roomState.roomMessages}
+          onClose={roomState.minimizeRoom}
+          onExit={roomState.exitRoom}
+          onSwitchRoom={() => {
+            roomState.minimizeRoom();
+            setShowCreate(false);
+            loadRooms({ silent: true });
+          }}
+          getMyId={getMyId}
+          onViewProfile={() => showAlert('Viewing profiles from a room is coming soon.', 'info')}
+          onTip={() => showAlert('Tipping in a room is coming soon.', 'info')}
+          members={roomState.roomMembers}
+          onKick={roomState.handleKickUser}
+          onSetRadio={roomState.handleSetRoomRadio}
+          typingUsers={roomState.roomTypingUsers}
+          onBan={roomState.handleBanUser}
+          onOpenBannedList={roomState.openBannedList}
+          showBannedList={roomState.showBannedList}
+          onCloseBannedList={() => roomState.setShowBannedList(false)}
+          bannedUsers={roomState.bannedUsers}
+          bannedListLoading={roomState.bannedListLoading}
+          onUnban={roomState.handleUnbanUser}
+          roomPositions={roomState.roomPositions}
+          isPrivileged={isPrivileged}
+          onRoomSaved={() => loadRooms({ silent: true })}
+        />
+      )}
+
+      <LoadingOverlay show={screenLoading.show} text={screenLoading.text} />
     </View>
   );
 }

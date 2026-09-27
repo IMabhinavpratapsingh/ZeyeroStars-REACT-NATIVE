@@ -25,9 +25,9 @@ export const COMMUNITY_AVATAR_PRESET_COUNT = 20;
 // COMMUNITY_AVATAR_PRESET_COUNT tak). Placeholder abhi 3 diye hain -
 // baaki apni actual files ke hisaab se add kar lena.
 const REGISTRY: Record<string, any> = {
-  '1': require('../../assets/community_avatar/1.svg'),
-  '2': require('../../assets/community_avatar/2.svg'),
-  '3': require('../../assets/community_avatar/3.svg'),
+  // '1': require('../../assets/community_avatar/1.svg'),
+  // '2': require('../../assets/community_avatar/2.svg'),
+  // '3': require('../../assets/community_avatar/3.svg'),
   // '4': require('../../assets/community_avatar/4.svg'),
   // ... yahan tak COMMUNITY_AVATAR_PRESET_COUNT (20) tak add karo
 };

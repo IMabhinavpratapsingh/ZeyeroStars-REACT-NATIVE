@@ -44,8 +44,7 @@
           "iosAppId": "ca-app-pub-3940256099942544~1458002511"
         }
       ],
-      "expo-audio",
-      "react-native-iap"
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true,

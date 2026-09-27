@@ -15,6 +15,10 @@ import useBackButtonHandler from '../../../shared/hooks/useBackButtonHandler';
 import useTopZIndex from '../../../shared/hooks/useTopZIndex';
 import useStableCallback from '../../../shared/hooks/useStableCallback';
 import { getMyId } from '../../../shared/utils/auth';
+import { getProfile } from '../../../shared/utils/profileHelpers';
+import RankBadge from '../../../shared/components/RankBadge';
+import VerifiedBadge from '../../../shared/components/VerifiedBadge';
+import EliteBadge from '../../../shared/components/EliteBadge';
 import { addComment, deleteComment, getComments } from '../services/feedApi';
 import type { FeedPost } from '../../dashboard/hooks/useFeedState';
 
@@ -33,6 +37,9 @@ import type { FeedPost } from '../../dashboard/hooks/useFeedState';
 interface Comment {
   id: string | number;
   user_id: string | number;
+  // Backend post ki tarah hi comments par bhi username/badges flat nahi,
+  // nested `players` relation ke andar bhejta hai - getProfile() use karo.
+  players?: Record<string, any> | Record<string, any>[];
   username?: string;
   content: string;
   created_at?: string;
@@ -99,6 +106,8 @@ const PostDetailModal = ({ post, onClose, onToggleLike }: PostDetailModalProps) 
 
   if (!post) return null;
 
+  const postProfile = getProfile(post as any);
+
   const loadMore = async () => {
     if (loadingMore || !hasMore || loading) return;
     setLoadingMore(true);
@@ -147,16 +156,19 @@ const PostDetailModal = ({ post, onClose, onToggleLike }: PostDetailModalProps) 
 
   const renderComment = ({ item }: { item: Comment }) => {
     const isMine = myId != null && String(item.user_id) === String(myId);
+    const cProfile = getProfile(item as any);
     return (
       <View style={styles.commentRow}>
         <View style={styles.commentAvatar}>
           <Text style={styles.commentAvatarInitial}>
-            {(item.username || '?').charAt(0).toUpperCase()}
+            {(cProfile.username || '?').charAt(0).toUpperCase()}
           </Text>
         </View>
         <View style={{ flex: 1 }}>
           <View style={styles.commentHeaderRow}>
-            <Text style={styles.commentUsername}>{item.username || 'Unknown'}</Text>
+            <Text style={styles.commentUsername}>{cProfile.username || 'Unknown'}</Text>
+            {!!cProfile.is_verified && <VerifiedBadge size="xs" />}
+            {!!cProfile.is_elite && <EliteBadge size="xs" />}
             {!!formatTime(item.created_at) && (
               <Text style={styles.commentTime}>{formatTime(item.created_at)}</Text>
             )}
@@ -195,13 +207,28 @@ const PostDetailModal = ({ post, onClose, onToggleLike }: PostDetailModalProps) 
               <View style={styles.postHeaderRow}>
                 <View style={styles.postAvatar}>
                   <Text style={styles.postAvatarInitial}>
-                    {(post.username || '?').charAt(0).toUpperCase()}
+                    {(postProfile.username || '?').charAt(0).toUpperCase()}
                   </Text>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.postUsername}>{post.username || 'Unknown'}</Text>
-                  {!!formatTime(post.created_at) && (
-                    <Text style={styles.postTime}>{formatTime(post.created_at)}</Text>
+                  <View style={styles.postUsernameRow}>
+                    <Text style={styles.postUsername}>{postProfile.username || 'Unknown'}</Text>
+                    {!!postProfile.is_verified && <VerifiedBadge size="sm" />}
+                    {!!postProfile.is_elite && <EliteBadge size="sm" />}
+                    {!!formatTime(post.created_at) && (
+                      <Text style={styles.postTime}>· {formatTime(post.created_at)}</Text>
+                    )}
+                  </View>
+                  {(postProfile.rank != null || postProfile.power != null) && (
+                    <View style={styles.postMetaRow}>
+                      {postProfile.rank != null && <RankBadge rank={postProfile.rank} size="sm" />}
+                      {postProfile.power != null && (
+                        <View style={styles.powerChip}>
+                          <Ionicons name="flash" size={11} color="#facc15" />
+                          <Text style={styles.powerText}>{postProfile.power}</Text>
+                        </View>
+                      )}
+                    </View>
                   )}
                 </View>
               </View>
@@ -285,8 +312,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   postAvatarInitial: { color: '#ffffff', fontSize: 18, fontWeight: '700' },
+  postUsernameRow: { flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'wrap' },
   postUsername: { color: '#ffffff', fontSize: 14, fontWeight: '600' },
-  postTime: { color: '#71717a', fontSize: 11, marginTop: 1 },
+  postTime: { color: '#71717a', fontSize: 11 },
+  postMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 3 },
+  powerChip: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  powerText: { color: '#facc15', fontSize: 11, fontWeight: '700' },
   postContent: { color: '#e4e4e7', fontSize: 14, lineHeight: 19, marginBottom: 10 },
   postActionsRow: { flexDirection: 'row', gap: 20, marginBottom: 12 },
   actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 5 },

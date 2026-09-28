@@ -17,6 +17,11 @@ const authConfig = () => {
 export const getFeedPosts = (offset = 0, limit = 10) =>
   axios.get(`${API_BASE}/feed/posts`, { ...authConfig(), params: { offset, limit } });
 
+// Profile ke Posts tab ke liye - kisi ek user ki posts, naye pehle.
+// Response: { posts, has_more }
+export const getUserPosts = (userId: Id, offset = 0, limit = 10) =>
+  axios.get(`${API_BASE}/feed/user/${userId}/posts`, { ...authConfig(), params: { offset, limit } });
+
 // Notification tap par sirf post_id milta hai - response: { post }
 export const getPost = (postId: Id) => axios.get(`${API_BASE}/feed/post/${postId}`, authConfig());
 

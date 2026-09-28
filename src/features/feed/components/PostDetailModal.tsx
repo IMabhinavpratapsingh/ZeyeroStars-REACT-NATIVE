@@ -57,12 +57,22 @@ interface Comment {
 
 interface PostDetailModalProps {
   post: FeedPost | null;
+  // Top spacing (status bar / header ke neeche se shuru karne ke liye).
+  // Feed tab mein 0 (wahan Header pehle se upar hai); Profile tab se
+  // insets.top + 12 pass hota hai taaki close button status bar ke neeche na jaye.
+  topInset?: number;
   onClose: () => void;
   onToggleLike: (id: string | number) => void;
   // Post delete ho jaane ke baad feed list se bhi hataane ke liye (feed.tsx
   // se optional wire karo) - na diya ho to bhi modal khud delete karke
   // close kar dega.
   onPostDeleted?: (postId: string | number) => void;
+  // Post ke poster / community naam par tap karke navigate karne ke liye
+  // (feed.tsx/dashboard.tsx se wire hote hain, communityOpenBus/
+  // profileOpenBus ke through - FeedList.tsx ke pattern jaisa hi).
+  onOpenProfile?: (user: { id: string | number; username?: string }) => void;
+  onOpenCommunity?: (communityId: string | number) => void;
+  onOpenCommunityBySlug?: (slug: string, communityName: string) => void;
 }
 
 const formatTime = (iso?: string): string => {
@@ -226,7 +236,16 @@ const CommentRow = memo(function CommentRow({
   );
 });
 
-const PostDetailModal = ({ post, onClose, onToggleLike, onPostDeleted }: PostDetailModalProps) => {
+const PostDetailModal = ({
+  post,
+  onClose,
+  onToggleLike,
+  onPostDeleted,
+  onOpenProfile,
+  onOpenCommunity,
+  onOpenCommunityBySlug,
+  topInset = 0,
+}: PostDetailModalProps) => {
   const zIndex = useTopZIndex(post);
   const handleClose = useStableCallback(() => onClose?.());
   useBackButtonHandler(!!post, handleClose);
@@ -317,6 +336,14 @@ const PostDetailModal = ({ post, onClose, onToggleLike, onPostDeleted }: PostDet
 
   const postProfile = getProfile(post as any);
   const isMyPost = myId != null && String(post.user_id) === String(myId);
+  const postCommunity = (post as any).communities;
+  const postCommunityId = (post as any).community_id;
+  const openPostCommunity = () => {
+    if (postCommunityId != null) onOpenCommunity?.(postCommunityId);
+  };
+  const openPostProfile = () => {
+    onOpenProfile?.({ id: post.user_id, username: postProfile.username });
+  };
 
   const loadMore = async () => {
     if (loadingMore || !hasMore || loading) return;
@@ -426,16 +453,15 @@ const PostDetailModal = ({ post, onClose, onToggleLike, onPostDeleted }: PostDet
   const listData = topLevel;
 
   return (
-    <View style={[styles.overlay, { zIndex, elevation: 20 }]}>
+    <View style={[styles.overlay, { zIndex, elevation: 20, paddingTop: topInset }]}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={styles.header}>
-          <Pressable onPress={onClose} hitSlop={10} style={styles.headerBack}>
-            <Ionicons name="arrow-back" size={20} color="#ffffff" />
-            <Text style={styles.headerBackText}>Close</Text>
-          </Pressable>
-          <Text style={styles.headerTitle}>Post</Text>
-          <View style={{ width: 60 }} />
-        </View>
+        {/* Dashboard ka Header (search/notifications/profile) is modal ke
+            peeche already dikhta hai - yahan apna alag "Post" title bar
+            nahi rakhte (dobara header jaisa dikhta tha), sirf ek chhota
+            floating close button chahiye. */}
+        <Pressable onPress={onClose} hitSlop={10} style={styles.closeFab}>
+          <Ionicons name="close" size={20} color="#ffffff" />
+        </Pressable>
 
         <FlatList
           data={listData}
@@ -455,7 +481,8 @@ const PostDetailModal = ({ post, onClose, onToggleLike, onPostDeleted }: PostDet
                   replyCount={replies.length}
                   repliesOpen={repliesOpen}
                   onToggleReplies={() => toggleReplyThread(c.id)}
-                  onOpenProfile={undefined}
+                  onOpenProfile={onOpenProfile}
+                  onOpenCommunityBySlug={onOpenCommunityBySlug}
                   onDeleteComment={handleDeleteComment}
                   onReportComment={() =>
                     setReportState({ mode: 'report_comment', target: { id: c.id, label: 'this comment' } })
@@ -475,6 +502,8 @@ const PostDetailModal = ({ post, onClose, onToggleLike, onPostDeleted }: PostDet
                           isMyComment={isMyReply}
                           isReply
                           replyTargetId={c.id}
+                          onOpenProfile={onOpenProfile}
+                          onOpenCommunityBySlug={onOpenCommunityBySlug}
                           onDeleteComment={handleDeleteComment}
                           onReportComment={() =>
                             setReportState({ mode: 'report_comment', target: { id: r.id, label: 'this comment' } })
@@ -493,20 +522,30 @@ const PostDetailModal = ({ post, onClose, onToggleLike, onPostDeleted }: PostDet
           contentContainerStyle={styles.listContent}
           ListHeaderComponent={
             <View style={styles.postCard} {...postLongPressProps}>
+              {!!postCommunity && (
+                <Pressable onPress={openPostCommunity} style={styles.communityChipRow} hitSlop={4}>
+                  <Ionicons name="people-circle-outline" size={16} color="#a1a1aa" />
+                  <Text style={styles.communityChipText} numberOfLines={1}>
+                    Z({postCommunity.name})
+                  </Text>
+                </Pressable>
+              )}
               <View style={styles.postHeaderRow}>
-                <CommentAvatar
-                  userId={post.user_id}
-                  username={postProfile.username}
-                  avatarUrl={postProfile.avatar_url}
-                  avatarVersion={postProfile.avatar_version}
-                  size={56}
-                />
+                <Pressable onPress={openPostProfile} hitSlop={4}>
+                  <CommentAvatar
+                    userId={post.user_id}
+                    username={postProfile.username}
+                    avatarUrl={postProfile.avatar_url}
+                    avatarVersion={postProfile.avatar_version}
+                    size={56}
+                  />
+                </Pressable>
                 <View style={{ flex: 1 }}>
-                  <View style={styles.postUsernameRow}>
+                  <Pressable onPress={openPostProfile} style={styles.postUsernameRow} hitSlop={4}>
                     <Text style={styles.postUsername}>{postProfile.username || 'Unknown'}</Text>
                     {!!postProfile.is_verified && <VerifiedBadge size="sm" />}
                     {!!postProfile.is_elite && <EliteBadge size="sm" />}
-                  </View>
+                  </Pressable>
                   <View style={styles.postMetaRow}>
                     {postProfile.rank != null && <RankBadge rank={postProfile.rank} size="sm" />}
                     {postProfile.power != null && (
@@ -635,6 +674,25 @@ const styles = StyleSheet.create({
   headerBack: { flexDirection: 'row', alignItems: 'center', gap: 4, width: 60 },
   headerBackText: { color: '#ffffff', fontSize: 13, fontWeight: '600' },
   headerTitle: { color: '#ffffff', fontWeight: '700', fontSize: 15 },
+  closeFab: {
+    position: 'absolute',
+    top: 14,
+    right: 14,
+    zIndex: 5,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(39,39,42,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  communityChipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 10,
+  },
+  communityChipText: { color: '#a1a1aa', fontWeight: '600', fontSize: 13 },
   listContent: { paddingHorizontal: 16, paddingBottom: 24 },
 
   avatarCircle: {

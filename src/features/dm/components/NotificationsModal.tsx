@@ -50,6 +50,7 @@ const ICON: Record<string, string> = {
   post_mention: 'create-outline',
   comment_mention: 'chatbubble-ellipses-outline',
   star: 'star-outline',
+  community_join: 'people-outline',
 };
 
 const notifText = (item: any): string => {
@@ -64,6 +65,8 @@ const notifText = (item: any): string => {
       return `${item.username} mentioned you in a comment`;
     case 'star':
       return `${item.username} starred you`;
+    case 'community_join':
+      return `${item.username} joined ${item.community_name || 'your community'}`;
     default:
       return '';
   }
@@ -76,9 +79,10 @@ interface NotificationsModalProps {
   onClose: () => void;
   onOpenPost?: (postId: string | number) => void;
   onOpenProfile?: (profile: { id: string | number; username?: string }) => void;
+  onOpenCommunity?: (community: { id: string | number; name?: string }) => void;
 }
 
-const NotificationsModal = ({ show, onClose, onOpenPost, onOpenProfile }: NotificationsModalProps) => {
+const NotificationsModal = ({ show, onClose, onOpenPost, onOpenProfile, onOpenCommunity }: NotificationsModalProps) => {
   const zIndex = useTopZIndex(show);
   const insets = useSafeAreaInsets();
   const [items, setItems] = useState<any[]>([]);
@@ -140,6 +144,10 @@ const NotificationsModal = ({ show, onClose, onOpenPost, onOpenProfile }: Notifi
   const handleTap = (item: any) => {
     if (item.type === 'star') {
       onOpenProfile?.({ id: item.actor_id, username: item.username });
+      return;
+    }
+    if (item.type === 'community_join') {
+      onOpenCommunity?.({ id: item.community_id, name: item.community_name });
       return;
     }
     if (item.post_id) {

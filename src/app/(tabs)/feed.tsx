@@ -11,6 +11,9 @@ import useFeedState, { type FeedPost } from '../../features/dashboard/hooks/useF
 import { listMyCommunities } from '../../features/communities/services/communitiesApi';
 import { showAlert } from '../../shared/utils/alertBus';
 import { requestOpenRooms } from '../../shared/utils/navOverlayBus';
+import { requestOpenCommunityById, requestOpenCommunityBySlug } from '../../shared/utils/communityOpenBus';
+import { requestOpenProfile } from '../../shared/utils/profileOpenBus';
+import { setFullscreenOverlayOpen } from '../../shared/utils/fullscreenOverlayBus';
 
 // WEB -> RN: Dashboard.jsx (web, 4281 lines) ka "Feed" slice yahan aa gaya -
 // list + pull-to-refresh + infinite scroll + like, CreatePostModal (naya
@@ -80,6 +83,11 @@ export default function FeedScreen() {
 
   const liveOpenedPost = openedPost ? posts.find((p) => p.id === openedPost.id) || openedPost : null;
 
+  useEffect(() => {
+    setFullscreenOverlayOpen(!!openedPost);
+    return () => setFullscreenOverlayOpen(false);
+  }, [openedPost]);
+
   return (
     <View style={styles.screen}>
       <View style={styles.topBar}>
@@ -105,6 +113,9 @@ export default function FeedScreen() {
         onLoadMore={loadMoreFeed}
         onToggleLike={handleToggleLike}
         onOpenPost={setOpenedPost}
+        onOpenProfile={(u) => requestOpenProfile(u)}
+        onOpenCommunity={(id) => requestOpenCommunityById({ id })}
+        onOpenCommunityBySlug={(slug, name) => requestOpenCommunityBySlug(slug, name)}
       />
 
       <CreatePostModal
@@ -121,7 +132,14 @@ export default function FeedScreen() {
         onChangeCommunityId={setCommunityId}
       />
 
-      <PostDetailModal post={liveOpenedPost} onClose={() => setOpenedPost(null)} onToggleLike={handleToggleLike} />
+      <PostDetailModal
+        post={liveOpenedPost}
+        onClose={() => setOpenedPost(null)}
+        onToggleLike={handleToggleLike}
+        onOpenProfile={(u) => requestOpenProfile(u)}
+        onOpenCommunity={(id) => requestOpenCommunityById({ id })}
+        onOpenCommunityBySlug={(slug, name) => requestOpenCommunityBySlug(slug, name)}
+      />
 
       <HashtagSearchModal
         show={showHashtagSearch}

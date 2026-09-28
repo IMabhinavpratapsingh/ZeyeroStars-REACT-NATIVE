@@ -1,6 +1,7 @@
 import React, { memo, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { showAlert } from '../../../shared/utils/alertBus';
 import { showRulesWarning } from '../../../shared/utils/rulesWarningBus';
 import useBackButtonHandler from '../../../shared/hooks/useBackButtonHandler';
@@ -46,6 +47,7 @@ const CommunityDetailScreen = ({
   onMembershipChange,
 }: CommunityDetailScreenProps) => {
   const zIndex = useTopZIndex(show);
+  const insets = useSafeAreaInsets();
   useBackButtonHandler(show, onClose);
 
   const [community, setCommunity] = useState<any>(null);
@@ -188,7 +190,7 @@ const CommunityDetailScreen = ({
   if (!community) {
     return (
       <SlideInRight show={show} bouncy={false} style={[styles.overlay, { zIndex, elevation: zIndex }]}>
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
           <Pressable onPress={onClose} hitSlop={10}>
             <Ionicons name="arrow-back" size={18} color="#fff" />
           </Pressable>
@@ -200,7 +202,7 @@ const CommunityDetailScreen = ({
   return (
     <>
       <SlideInRight show={show} bouncy={false} style={[styles.overlay, { zIndex, elevation: zIndex }]}>
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
           <Pressable onPress={onClose} hitSlop={10}>
             <Ionicons name="arrow-back" size={18} color="#fff" />
           </Pressable>

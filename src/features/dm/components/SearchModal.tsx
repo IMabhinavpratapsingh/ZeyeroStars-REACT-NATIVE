@@ -40,6 +40,7 @@ interface SearchModalProps {
   onChangeSearchTerm: (q: string) => void;
   onSearch: () => void;
   results: SearchUser[];
+  loading?: boolean;
   onClose: () => void;
   onSelectUser: (user: SearchUser) => void;
   onOpenCommunity?: (community: any) => void;
@@ -70,6 +71,7 @@ const SearchModal = ({
   onChangeSearchTerm,
   onSearch,
   results,
+  loading = false,
   onClose,
   onSelectUser,
   onOpenCommunity,
@@ -206,20 +208,31 @@ const SearchModal = ({
         </View>
 
         {tab === 'users' && (
-          <FlatList
-            data={results}
-            keyExtractor={(item) => String(item.id)}
-            contentContainerStyle={styles.listContent}
-            ListEmptyComponent={
-              <Text style={styles.emptyText}>{query.trim() ? 'No users found.' : 'Search for a username.'}</Text>
-            }
-            renderItem={({ item }) => (
-              <Pressable onPress={() => onSelectUser(item)} style={styles.userRow}>
-                <Ionicons name="people-outline" size={14} color="#6e6e6e" />
-                <Text style={styles.userRowText}>{item.username}</Text>
-              </Pressable>
-            )}
-          />
+          loading ? (
+            <View style={styles.listContent}>
+              {Array.from({ length: 6 }).map((_, i) => (
+                <View key={i} style={styles.skeletonRow}>
+                  <View style={styles.skeletonIcon} />
+                  <View style={styles.skeletonLine} />
+                </View>
+              ))}
+            </View>
+          ) : (
+            <FlatList
+              data={results}
+              keyExtractor={(item) => String(item.id)}
+              contentContainerStyle={styles.listContent}
+              ListEmptyComponent={
+                <Text style={styles.emptyText}>{query.trim() ? 'No users found.' : 'Search for a username.'}</Text>
+              }
+              renderItem={({ item }) => (
+                <Pressable onPress={() => onSelectUser(item)} style={styles.userRow}>
+                  <Ionicons name="people-outline" size={14} color="#6e6e6e" />
+                  <Text style={styles.userRowText}>{item.username}</Text>
+                </Pressable>
+              )}
+            />
+          )
         )}
 
         {tab === 'communities' && (
@@ -325,6 +338,17 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   userRowText: { color: '#ffffff', flex: 1 },
+  skeletonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#161616',
+  },
+  skeletonIcon: { width: 18, height: 18, borderRadius: 9, backgroundColor: '#262626' },
+  skeletonLine: { flex: 1, height: 12, borderRadius: 6, backgroundColor: '#262626' },
   hashtagText: { color: '#ffffff', flex: 1 },
   hashtagCount: { color: '#6e6e6e', fontSize: 12 },
 });

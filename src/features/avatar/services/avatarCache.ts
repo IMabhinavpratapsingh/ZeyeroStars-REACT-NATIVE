@@ -74,9 +74,19 @@ export function resolveAvatarUrl(
   version: number | string | null | undefined,
   avatarUrl: string | null | undefined
 ): string | null {
-  if (userId == null || userId === '' || !avatarUrl) return avatarUrl || null;
+  if (userId == null || userId === '') return avatarUrl || null;
 
   const id = String(userId);
+
+  // Backend ne explicitly null/empty avatar_url bheja (user ne photo hata
+  // di, ya kabhi thi hi nahi) - to purani cached entry (memory + storage)
+  // turant hata do, warna stale pfp kahin bhi wapas dikh sakti hai.
+  // (undefined = field aaya hi nahi, usme cache ko haath nahi lagate.)
+  if (avatarUrl === null || avatarUrl === '') {
+    if (memCache.has(id)) invalidateAvatar(id);
+    return null;
+  }
+  if (!avatarUrl) return null;
   const normVersion = version ?? 0;
 
   const mem = memCache.get(id);

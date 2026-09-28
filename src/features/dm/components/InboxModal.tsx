@@ -13,7 +13,6 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { BOTTOM_NAV_PX } from '../../../shared/constants/layout';
 import useBackButtonHandler from '../../../shared/hooks/useBackButtonHandler';
 import useTopZIndex from '../../../shared/hooks/useTopZIndex';
 import useStableCallback from '../../../shared/hooks/useStableCallback';
@@ -538,7 +537,13 @@ const InboxModal = ({
           transition={{ type: 'timing', duration: 180 }}
           style={[
             styles.screen,
-            { zIndex, elevation: 20, paddingTop: insets.top + 16, bottom: BOTTOM_NAV_PX + insets.bottom },
+            // NOTE: parent (DMOverlayScreen -> PersistentSlide) already
+            // absolute-positions itself with `bottom: BOTTOM_NAV_PX`, isliye
+            // yahan wapas BOTTOM_NAV_PX+insets.bottom ghatana DOUBLE-COUNT
+            // tha - is (already correctly bounded) parent ke andar bas
+            // `bottom: 0` (poora parent fill) sahi hai, warna BottomNav se
+            // upar ek extra khaali gap/"border" dikhta tha.
+            { zIndex, elevation: 20, paddingTop: insets.top + 16, bottom: 0 },
           ]}
         >
           <View style={styles.header}>

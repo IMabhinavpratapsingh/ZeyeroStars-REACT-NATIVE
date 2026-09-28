@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { BackHandler, View } from 'react-native';
 import { Stack } from 'expo-router';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { loadNetworkToken, getToken } from '../shared/services/NetworkManager';
 import { loadMyId } from '../shared/utils/auth';
+import { hydrateAvatarCache } from '../features/avatar/services/avatarCache';
 import { setupAuthInterceptor } from '../shared/services/authInterceptor';
 import { setupPushNotifications } from '../shared/services/pushNotifications';
 import { handleHardwareBack } from '../shared/utils/backButtonStack';
@@ -37,7 +39,7 @@ export default function RootLayout() {
   // karo (purane users ke liye bhi - dekho original App.jsx comment).
   useEffect(() => {
     (async () => {
-      await Promise.all([loadNetworkToken(), loadMyId()]);
+      await Promise.all([loadNetworkToken(), loadMyId(), hydrateAvatarCache()]);
       setupAuthInterceptor();
 
       // main.jsx (capacitor) mein ye dono app-start pe ek baar chalte the -
@@ -70,23 +72,30 @@ export default function RootLayout() {
   if (!booted) return null; // Splash screen expo-splash-screen plugin khud handle karta hai
 
   return (
-    <SafeAreaProvider>
-      <View style={{ flex: 1, backgroundColor: '#000000' }}>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="index" />
-          <Stack.Screen name="login" />
-          <Stack.Screen name="username-selection" />
-          <Stack.Screen name="(tabs)" />
-        </Stack>
+    // GestureHandlerRootView: poori app (Stack ke andar har screen) ko
+    // wrap karna zaroori hai - warna kahin bhi GestureDetector (jaise
+    // ZoomableAvatarView ka pinch-zoom) use hote hi "GestureDetector must
+    // be used as a descendant of GestureHandlerRootView" crash aata hai.
+    // Pehle import to tha par kahin actually render/wrap nahi ho raha tha.
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <View style={{ flex: 1, backgroundColor: '#000000' }}>
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="index" />
+            <Stack.Screen name="login" />
+            <Stack.Screen name="username-selection" />
+            <Stack.Screen name="(tabs)" />
+          </Stack>
 
-        {/* Global overlays - ek hi baar mount, poori app mein kahin se bhi
-            showAlert() / confirmAction() / showRulesWarning() call karke
-            use kiye ja sakte hain. */}
-        <AlertPopupHost />
-        <ConfirmPopupHost />
-        <RulesWarningHost />
-        <UpdateRequiredModal />
-      </View>
-    </SafeAreaProvider>
+          {/* Global overlays - ek hi baar mount, poori app mein kahin se bhi
+              showAlert() / confirmAction() / showRulesWarning() call karke
+              use kiye ja sakte hain. */}
+          <AlertPopupHost />
+          <ConfirmPopupHost />
+          <RulesWarningHost />
+          <UpdateRequiredModal />
+        </View>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

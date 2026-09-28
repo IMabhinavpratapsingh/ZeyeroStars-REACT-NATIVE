@@ -1,4 +1,5 @@
 import { memo, useCallback } from 'react';
+import type { Ref } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -30,6 +31,14 @@ import type { FeedPost } from '../../dashboard/hooks/useFeedState';
 // callback props se hai - jab wo screens bane, feed.tsx mein wire kar dena.
 
 const POST_AVATAR_SIZE = 44;
+// Community ab post card mein PRIMARY identity hai (bada avatar+naam,
+// Reddit ke "r/Community" jaisa) - poster (user) ab SECONDARY, chhota row
+// hai neeche. Yeh sirf tab lagta hai jab showCommunityChip=true aur post
+// par community data mojood hai; CommunityDetailScreen (apni community ke
+// andar) mein showCommunityChip=false rehta hai to wahan pehle jaisa hi
+// user-primary header dikhta hai (community to screen khud already batata
+// hai, repeat karne ki zaroorat nahi).
+const POSTER_AVATAR_SIZE = 20;
 
 const formatPostTime = (iso?: string): string | null => {
   if (!iso) return null;
@@ -50,23 +59,28 @@ const PostAvatar = ({
   username,
   avatarUrl,
   avatarVersion,
+  size = POST_AVATAR_SIZE,
 }: {
   userId: string | number;
   username?: string;
   avatarUrl?: string | null;
   avatarVersion?: number | string | null;
+  size?: number;
 }) => {
   const avatarSrc = useAvatarImage(userId, avatarUrl, avatarVersion);
+  const dotSize = size <= 24 ? 8 : 12;
   return (
-    <View style={styles.avatarWrap}>
-      <View style={styles.avatarCircle}>
+    <View style={{ width: size, height: size }}>
+      <View style={[styles.avatarCircle, { width: size, height: size, borderRadius: size / 2 }]}>
         {avatarSrc ? (
           <Image source={{ uri: avatarSrc }} style={styles.avatarImg} />
         ) : (
-          <Text style={styles.avatarInitial}>{(username || '?').charAt(0).toUpperCase()}</Text>
+          <Text style={[styles.avatarInitial, size <= 24 && styles.avatarInitialSmall]}>
+            {(username || '?').charAt(0).toUpperCase()}
+          </Text>
         )}
       </View>
-      <OnlineStatusDot userId={userId} size={12} />
+      <OnlineStatusDot userId={userId} size={dotSize} />
     </View>
   );
 };
@@ -104,76 +118,122 @@ const PostCard = memo(function PostCard({
   const currentRoom = (post as any).current_room;
   const community = (post as any).communities;
   const hashtag = (post as any).hashtag as string | undefined;
+  const communityId = (post as any).community_id;
+  const postedTime = formatPostTime(post.created_at);
+
+  const openCommunity = (e: any) => {
+    e.stopPropagation();
+    onOpenCommunity?.(communityId);
+  };
+  const openProfile = (e: any) => {
+    e.stopPropagation();
+    onOpenProfile?.({ id: post.user_id, username: profile.username });
+  };
+
+  // Post card ka header: community_id har post par mandatory hai, isliye
+  // (global feed mein, showCommunityChip=true) community ab PRIMARY hai -
+  // bada avatar+naam, tap karne par community par redirect. Poster (jisne
+  // post kiya) ab chhota, secondary row hai - uska avatar/naam tap karne
+  // par profile par redirect. CommunityDetailScreen ke andar apne feed mein
+  // (showCommunityChip=false) community screen khud hi context de deti hai,
+  // isliye wahan pehle jaisa hi poster-primary header rehta hai.
+  const showCommunityPrimary = showCommunityChip && !!community;
 
   return (
     <Pressable style={styles.card} onPress={() => onOpenPost?.(post)}>
-      <View style={styles.header}>
-        <Pressable
-          onPress={(e) => {
-            e.stopPropagation();
-            onOpenProfile?.({ id: post.user_id, username: profile.username });
-          }}
-        >
-          <PostAvatar
-            userId={post.user_id}
-            username={profile.username}
-            avatarUrl={profile.avatar_url}
-            avatarVersion={profile.avatar_version}
-          />
-        </Pressable>
-        <View style={styles.headerText}>
-          <View style={styles.usernameRow}>
-            <Text style={styles.username}>{profile.username || 'Unknown'}</Text>
-            {!!profile.is_verified && <VerifiedBadge size="sm" />}
-            {!!profile.is_elite && <EliteBadge size="sm" />}
-            {!!formatPostTime(post.created_at) && (
-              <Text style={styles.time}>· {formatPostTime(post.created_at)}</Text>
-            )}
-          </View>
-          <View style={styles.metaRow}>
-            {profile.rank != null && <RankBadge rank={profile.rank} size="sm" />}
-            {profile.power != null && (
-              <View style={styles.powerChip}>
-                <Ionicons name="flash" size={11} color="#facc15" />
-                <Text style={styles.powerText}>{profile.power}</Text>
+      {showCommunityPrimary ? (
+        <View style={styles.header}>
+          <Pressable onPress={openCommunity} hitSlop={4}>
+            <CommunityAvatar communityId={communityId} iconId={community.icon_id} iconUrl={community.icon_url} size="md" />
+          </Pressable>
+          <View style={styles.headerText}>
+            <Pressable onPress={openCommunity} hitSlop={4}>
+              <View style={styles.usernameRow}>
+                <Text style={styles.username} numberOfLines={1}>
+                  Z({community.name})
+                </Text>
+                {!!postedTime && <Text style={styles.time}>· {postedTime}</Text>}
               </View>
-            )}
-            {!!currentRoom && (
-              <Pressable
-                onPress={(e) => {
-                  e.stopPropagation();
-                  onOpenUserRoom?.({ id: post.user_id, username: profile.username }, currentRoom);
-                }}
-                style={styles.roomChip}
-              >
-                <Ionicons name="home" size={11} color="#818cf8" />
-                <Text style={styles.roomText}>{currentRoom.room_name}</Text>
-              </Pressable>
-            )}
+            </Pressable>
+
+            <Pressable onPress={openProfile} style={styles.posterRow} hitSlop={4}>
+              <PostAvatar
+                userId={post.user_id}
+                username={profile.username}
+                avatarUrl={profile.avatar_url}
+                avatarVersion={profile.avatar_version}
+                size={POSTER_AVATAR_SIZE}
+              />
+              <Text style={styles.posterUsername} numberOfLines={1}>
+                {profile.username || 'Unknown'}
+              </Text>
+              {!!profile.is_verified && <VerifiedBadge size="sm" />}
+              {!!profile.is_elite && <EliteBadge size="sm" />}
+            </Pressable>
+
+            <View style={styles.metaRow}>
+              {profile.rank != null && <RankBadge rank={profile.rank} size="sm" />}
+              {profile.power != null && (
+                <View style={styles.powerChip}>
+                  <Ionicons name="flash" size={11} color="#facc15" />
+                  <Text style={styles.powerText}>{profile.power}</Text>
+                </View>
+              )}
+              {!!currentRoom && (
+                <Pressable
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    onOpenUserRoom?.({ id: post.user_id, username: profile.username }, currentRoom);
+                  }}
+                  style={styles.roomChip}
+                >
+                  <Ionicons name="home" size={11} color="#818cf8" />
+                  <Text style={styles.roomText}>{currentRoom.room_name}</Text>
+                </Pressable>
+              )}
+            </View>
           </View>
         </View>
-      </View>
-
-      {/* community_id har post par mandatory hai - global feed mein chip
-          dikhati hai ki post kis community se aayi; kisi ek community ke
-          apne feed (CommunityDetailScreen) ke andar hide (showCommunityChip
-          false) hoti hai, header khud repeat na ho. */}
-      {showCommunityChip && !!community && (
-        <Pressable
-          onPress={(e) => {
-            e.stopPropagation();
-            onOpenCommunity?.((post as any).community_id);
-          }}
-          style={styles.communityChip}
-        >
-          <CommunityAvatar
-            communityId={(post as any).community_id}
-            iconId={community.icon_id}
-            iconUrl={community.icon_url}
-            size="xs"
-          />
-          <Text style={styles.communityText}>{community.name}</Text>
-        </Pressable>
+      ) : (
+        <View style={styles.header}>
+          <Pressable onPress={openProfile}>
+            <PostAvatar
+              userId={post.user_id}
+              username={profile.username}
+              avatarUrl={profile.avatar_url}
+              avatarVersion={profile.avatar_version}
+            />
+          </Pressable>
+          <View style={styles.headerText}>
+            <View style={styles.usernameRow}>
+              <Text style={styles.username}>{profile.username || 'Unknown'}</Text>
+              {!!profile.is_verified && <VerifiedBadge size="sm" />}
+              {!!profile.is_elite && <EliteBadge size="sm" />}
+              {!!postedTime && <Text style={styles.time}>· {postedTime}</Text>}
+            </View>
+            <View style={styles.metaRow}>
+              {profile.rank != null && <RankBadge rank={profile.rank} size="sm" />}
+              {profile.power != null && (
+                <View style={styles.powerChip}>
+                  <Ionicons name="flash" size={11} color="#facc15" />
+                  <Text style={styles.powerText}>{profile.power}</Text>
+                </View>
+              )}
+              {!!currentRoom && (
+                <Pressable
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    onOpenUserRoom?.({ id: post.user_id, username: profile.username }, currentRoom);
+                  }}
+                  style={styles.roomChip}
+                >
+                  <Ionicons name="home" size={11} color="#818cf8" />
+                  <Text style={styles.roomText}>{currentRoom.room_name}</Text>
+                </Pressable>
+              )}
+            </View>
+          </View>
+        </View>
       )}
 
       {!!hashtag && (
@@ -231,6 +291,11 @@ interface FeedListProps extends PostCardCallbacks {
   // Ek community ke apne feed (CommunityDetailScreen) ke andar false pass
   // karo - us screen ka header hi bata deta hai kis community mein ho.
   showCommunityChip?: boolean;
+  // Home button ke DOUBLE TAP (Instagram jaisa: scroll top + reload) ke
+  // liye parent (dashboard.tsx) ko FlatList par seedha `scrollToOffset`
+  // chahiye - koi forwardRef nahi, bas ye ref FlatList par attach kar
+  // dete hain (FeedList khud ek plain function component hai).
+  listRef?: Ref<FlatList<FeedPost>>;
 }
 
 export default function FeedList({
@@ -248,6 +313,7 @@ export default function FeedList({
   onOpenCommunity,
   onOpenCommunityBySlug,
   showCommunityChip = true,
+  listRef,
 }: FeedListProps) {
   const renderItem = useCallback(
     ({ item }: { item: FeedPost }) => (
@@ -293,6 +359,7 @@ export default function FeedList({
 
   return (
     <FlatList
+      ref={listRef}
       data={posts}
       keyExtractor={(item) => String(item.id)}
       renderItem={renderItem}
@@ -315,7 +382,6 @@ const styles = StyleSheet.create({
   emptyText: { color: '#71717a', fontSize: 13 },
   card: { paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#27272a' },
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
-  avatarWrap: { width: POST_AVATAR_SIZE, height: POST_AVATAR_SIZE },
   avatarCircle: {
     width: POST_AVATAR_SIZE,
     height: POST_AVATAR_SIZE,
@@ -327,22 +393,20 @@ const styles = StyleSheet.create({
   },
   avatarImg: { width: '100%', height: '100%' },
   avatarInitial: { color: '#ffffff', fontSize: 18, fontWeight: '700' },
+  avatarInitialSmall: { fontSize: 10 },
   headerText: { flex: 1 },
   usernameRow: { flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'wrap' },
   username: { color: '#ffffff', fontSize: 14, fontWeight: '600' },
   time: { color: '#71717a', fontSize: 11 },
+  // Chhota "posted by" row (poster avatar + naam) - jab community primary
+  // header dikh raha ho, isi row par tap se profile par jaate hain.
+  posterRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4, flexWrap: 'wrap' },
+  posterUsername: { color: '#a1a1aa', fontSize: 12, fontWeight: '600' },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 3, flexWrap: 'wrap' },
   powerChip: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   powerText: { color: '#facc15', fontSize: 11, fontWeight: '700' },
   roomChip: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   roomText: { color: '#818cf8', fontSize: 11, fontWeight: '700' },
-  communityChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 8,
-  },
-  communityText: { color: '#a1a1aa', fontSize: 12, fontWeight: '700' },
   hashtagChip: {
     alignSelf: 'flex-start',
     backgroundColor: 'rgba(99,102,241,0.18)',

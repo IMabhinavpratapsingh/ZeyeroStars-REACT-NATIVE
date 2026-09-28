@@ -1,6 +1,7 @@
 import React, { memo, useEffect, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import useBackButtonHandler from '../../../shared/hooks/useBackButtonHandler';
 import useTopZIndex from '../../../shared/hooks/useTopZIndex';
 import { SlideInRight } from '../../../shared/components/motion/ScreenTransition';
@@ -28,6 +29,7 @@ interface CommunityListScreenProps {
 // wali, /communities/mine se seedha, koi pagination/search nahi).
 const CommunityListScreen = ({ show, onClose, onOpenCommunity, initialTab = 'all' }: CommunityListScreenProps) => {
   const zIndex = useTopZIndex(show);
+  const insets = useSafeAreaInsets();
   useBackButtonHandler(show, onClose);
 
   const [tab, setTab] = useState<'all' | 'mine'>(initialTab);
@@ -162,7 +164,7 @@ const CommunityListScreen = ({ show, onClose, onOpenCommunity, initialTab = 'all
         bouncy={false}
         style={[styles.overlay, { bottom: BOTTOM_NAV_PX, zIndex, elevation: zIndex }]}
       >
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
           <Pressable onPress={onClose} hitSlop={10}>
             <Ionicons name="arrow-back" size={18} color="#fff" />
           </Pressable>

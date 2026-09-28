@@ -1,160 +1,74 @@
-import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Pressable } from 'react-native';
-import axios from 'axios';
-import { router } from 'expo-router';
-import { API_BASE } from '../../shared/config/config';
-import { getMyId, clearMyId } from '../../shared/utils/auth';
-import { getToken, clearToken } from '../../shared/services/NetworkManager';
-import ProfileCard from '../../shared/components/ProfileCard';
-import RankBadge from '../../shared/components/RankBadge';
-import VerifiedBadge from '../../shared/components/VerifiedBadge';
-import EliteBadge from '../../shared/components/EliteBadge';
-import useItemsCatalog from '../../shared/hooks/useItemsCatalog';
-import useInventory from '../../shared/hooks/useInventory';
+import { useState } from 'react';
+import { StyleSheet, View } from 'react-native';
+import { router, usePathname } from 'expo-router';
+import { getMyId } from '../../shared/utils/auth';
+import ProfileViewModal from '../../features/dm/components/ProfileViewModal';
+import SettingsMenu from '../../features/dm/components/SettingsMenu';
+import CommunityListScreen from '../../features/communities/components/CommunityListScreen';
 import useDashboardBalance from '../../features/dashboard/hooks/useDashboardBalance';
-import { confirmAction } from '../../shared/utils/confirmBus';
+import { requestOpenRooms } from '../../shared/utils/navOverlayBus';
+import { requestOpenCommunityById } from '../../shared/utils/communityOpenBus';
 
-// WEB -> RN SCOPE NOTE: Dashboard.jsx (web) mein "apni profile" alag screen
-// nahi thi - ek DM-header/ProfileViewModal hi self aur others dono dikhata
-// tha. Yahan alag, simple self-profile TAB banaya hai: avatar + rank/badges +
-// balance + logout. Edit-profile (bio, skills), "My Room" card, aur
-// followers/following abhi is pass mein nahi hain.
-interface MyProfile {
-  username?: string;
-  rank?: string | number;
-  is_verified?: boolean;
-  is_elite?: boolean;
-  photo_url?: string | null;
-  [key: string]: unknown;
-}
-
+// WEB -> RN SCOPE NOTE: pehle yahan ek bahut chhota placeholder self-profile
+// screen tha (sirf avatar + coins/z_money + logout). Ab web ke ProfileViewModal
+// jaisa hi poora component (Bio, Rank/Power/Stars, Community Joined, Your Room,
+// Edit Avatar/Edit Profile Photo/Edit Skills, Posts/Store tabs) is tab ka body
+// hai - woh khud apna data fetch karta hai (GET /profile/{myId}), isliye
+// yahan sirf `profile={{ id: myId }}` + `isMe` pass karna kaafi hai.
+//
+// "Your Room" card abhi Rooms overlay (list) khol deta hai - poori
+// RoomChatWindow floor yahan duplicate nahi ki (woh already Rooms tab mein
+// hai); "Community" card apna khud ka CommunityListScreen ("mine" tab) khol
+// deta hai, tap karne par global CommunityDetailScreen (_layout.tsx) bus se
+// khulta hai. Settings gear SettingsMenu (logout yahin se) kholta hai.
 export default function ProfileScreen() {
-  const [profile, setProfile] = useState<MyProfile | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const { itemsById } = useItemsCatalog();
-  const { equippedIds } = useInventory();
-  const { balance, fetchBalance } = useDashboardBalance();
-
-  const loadProfile = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
-    if (!silent) setLoading(true);
-    try {
-      const token = getToken();
-      const res = await axios.get(`${API_BASE}/profile/${getMyId()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setProfile(res.data);
-    } catch (err: any) {
-      console.error('Self profile fetch error:', err.response?.data || err.message);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadProfile();
-    fetchBalance();
-  }, [loadProfile, fetchBalance]);
-
-  const onRefresh = () => {
-    setRefreshing(true);
-    loadProfile({ silent: true });
-    fetchBalance();
-  };
-
-  const handleLogout = async () => {
-    const ok = await confirmAction({ message: 'Log out of your account?' });
-    if (!ok) return;
-    await clearToken();
-    await clearMyId();
-    router.replace('/login');
-  };
-
-  if (loading && !profile) {
-    return (
-      <View style={styles.centerFill}>
-        <ActivityIndicator color="#ffffff" />
-      </View>
-    );
-  }
+  const myId = getMyId();
+  const pathname = usePathname();
+  const isFocused = pathname.includes('/profile');
+  const { balance, setBalance } = useDashboardBalance();
+  const [showSettings, setShowSettings] = useState(false);
+  const [showCommunities, setShowCommunities] = useState(false);
+  const [settingsUsername, setSettingsUsername] = useState<string | undefined>();
 
   return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#ffffff" />}
-    >
-      <View style={styles.avatarWrap}>
-        <ProfileCard
-          username={profile?.username}
-          size="lg"
-          equippedItems={equippedIds}
-          itemsById={itemsById}
-          photoUrl={profile?.photo_url}
-        />
-      </View>
+    <View style={styles.screen}>
+      <ProfileViewModal
+        profile={{ id: myId }}
+        isMe
+        embedded
+        active={isFocused}
+        onClose={() => router.push('/(tabs)/dashboard')}
+        onMessageClick={() => {}}
+        onOpenRoom={() => requestOpenRooms()}
+        onOpenSettings={(username) => {
+          setSettingsUsername(username);
+          setShowSettings(true);
+        }}
+        onOpenMyCommunities={() => setShowCommunities(true)}
+      />
 
-      <View style={styles.nameRow}>
-        <Text style={styles.username}>{profile?.username}</Text>
-        {!!profile?.is_verified && <VerifiedBadge size="sm" />}
-        {!!profile?.is_elite && <EliteBadge size="sm" />}
-      </View>
+      <SettingsMenu
+        show={showSettings}
+        onClose={() => setShowSettings(false)}
+        balance={balance}
+        onBalanceUpdate={setBalance}
+        currentUsername={settingsUsername}
+        onLogout={() => router.replace('/login')}
+      />
 
-      {profile?.rank != null && (
-        <View style={styles.rankRow}>
-          <RankBadge rank={profile.rank} size="sm" />
-        </View>
-      )}
-
-      <View style={styles.balanceCard}>
-        <View style={styles.balanceRow}>
-          <Text style={styles.balanceLabel}>Coins</Text>
-          <Text style={styles.balanceValue}>{balance.coins}</Text>
-        </View>
-        <View style={styles.balanceRow}>
-          <Text style={styles.balanceLabel}>Z Money</Text>
-          <Text style={styles.balanceValue}>{balance.z_money}</Text>
-        </View>
-      </View>
-
-      <Pressable style={styles.logoutBtn} onPress={handleLogout}>
-        <Text style={styles.logoutText}>Log out</Text>
-      </Pressable>
-    </ScrollView>
+      <CommunityListScreen
+        show={showCommunities}
+        onClose={() => setShowCommunities(false)}
+        initialTab="mine"
+        onOpenCommunity={(c) => {
+          setShowCommunities(false);
+          requestOpenCommunityById(c);
+        }}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#000000' },
-  centerFill: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000000' },
-  content: { paddingTop: 16, paddingHorizontal: 24, paddingBottom: 40, alignItems: 'center' },
-  avatarWrap: { width: '100%', maxWidth: 260, marginBottom: 16 },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
-  username: { color: '#ffffff', fontSize: 20, fontWeight: '700' },
-  rankRow: { marginTop: 8 },
-  balanceCard: {
-    width: '100%',
-    marginTop: 24,
-    backgroundColor: '#18181b',
-    borderWidth: 1,
-    borderColor: '#27272a',
-    borderRadius: 12,
-    padding: 16,
-    gap: 10,
-  },
-  balanceRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  balanceLabel: { color: '#a1a1aa', fontSize: 14 },
-  balanceValue: { color: '#ffffff', fontSize: 16, fontWeight: '700' },
-  logoutBtn: {
-    marginTop: 28,
-    width: '100%',
-    paddingVertical: 12,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#3f3f46',
-    alignItems: 'center',
-  },
-  logoutText: { color: '#f87171', fontWeight: '700', fontSize: 14 },
 });

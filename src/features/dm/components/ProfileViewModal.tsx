@@ -1,16 +1,24 @@
-import React, { memo, useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Image, NativeScrollEvent, NativeSyntheticEvent, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { MotiView } from 'moti';
 import axios from 'axios';
 import * as ImagePicker from 'expo-image-picker';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaFrameContext, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { API_BASE } from '../../../shared/config/config';
 import { getToken } from '../../../shared/services/NetworkManager';
 import { showAlert } from '../../../shared/utils/alertBus';
+import { confirmAction } from '../../../shared/utils/confirmBus';
+import { setMyAvatarUrl } from '../../../shared/utils/myAvatarBus';
+import { invalidateAvatar } from '../../avatar/services/avatarCache';
 import { compressImage, toUploadFormPart } from '../../../shared/utils/imageCompress';
 import { FIELD } from '../../../shared/utils/profileFields';
 import { renderWithMentions } from '../../../shared/utils/renderMentions';
+import { requestOpenProfile } from '../../../shared/utils/profileOpenBus';
+import { requestOpenCommunityById, requestOpenCommunityBySlug } from '../../../shared/utils/communityOpenBus';
+import { setFullscreenOverlayOpen } from '../../../shared/utils/fullscreenOverlayBus';
+import { getUserPosts, togglePostLike } from '../../feed/services/feedApi';
+import PostDetailModal from '../../feed/components/PostDetailModal';
 import { getBottomNavTotal } from '../../../shared/constants/layout';
 import useItemsCatalog from '../../../shared/hooks/useItemsCatalog';
 import useSkillsCatalog from '../../../shared/hooks/useSkillsCatalog';
@@ -73,6 +81,21 @@ interface ProfileViewModalProps {
   onOpenChatWithDraft?: (user: { id: string | number; username: string }, draft: string) => void;
   onOpenCommunity?: (slug: string, name: string) => void;
   onOpenMyCommunities?: () => void;
+  /** Profile TAB ke andar (normal flex child, parent already BottomNav se
+   * upar bounded) true - tab bottom offset khud subtract nahi karna
+   * (warna BottomNav se upar ek extra khaali gap/"border" dikhta hai).
+   * Default false = purana behaviour (global overlay, jahan BottomNav
+   * sibling hai aur khud hi uske upar tak cover karna padta hai). */
+  embedded?: boolean;
+  /** Profile TAB mein Tabs navigator baaki tabs (Dashboard) ko bhi mounted
+   * rakhta hai (sirf hidden), isliye is component ka apna hardware-back
+   * handler hamesha register rehta tha - Dashboard tab par hote hue bhi
+   * phone ka back button galti se PROFILE ke onClose (Home) ko call kar
+   * deta tha. `active=false` par yeh back-handler register hi nahi hota -
+   * profile.tsx isse "kya Profile tab abhi visible/focused hai" se control
+   * karta hai (useIsFocused). Default true = purana behaviour (global
+   * overlay use-case, jahan hamesha "open" hi count hota hai). */
+  active?: boolean;
 }
 
 const ProfileViewModal = ({
@@ -88,6 +111,8 @@ const ProfileViewModal = ({
   onOpenChatWithDraft,
   onOpenCommunity,
   onOpenMyCommunities,
+  embedded = false,
+  active = true,
 }: ProfileViewModalProps) => {
   const zIndex = useTopZIndex(profile);
   const insets = useSafeAreaInsets();
@@ -118,7 +143,7 @@ const ProfileViewModal = ({
   const { skillsById } = useSkillsCatalog();
 
   const handleClose = useStableCallback(() => onClose?.());
-  useBackButtonHandler(!!profile, handleClose);
+  useBackButtonHandler(!!profile && active, handleClose);
 
   const userId = profile?.id || profile?.target_id;
 
@@ -135,6 +160,7 @@ const ProfileViewModal = ({
           setBlockedByMe(cached.blockedByMe);
           setBlockedMe(cached.blockedMe);
           setLoading(false);
+          if (isMe) setMyAvatarUrl(cached.data?.[FIELD.avatar]);
           return;
         }
       }
@@ -155,7 +181,11 @@ const ProfileViewModal = ({
       const newBlockedByMe = !!blockRes?.data?.blocked_by_me;
       const newBlockedMe = !!blockRes?.data?.blocked_me;
 
-      if (profRes) setData(newData);
+      if (profRes) {
+        setData(newData);
+        // Apna profile hai to Header ki pfp bhi isi se sync rakho.
+        if (isMe) setMyAvatarUrl(newData?.[FIELD.avatar]);
+      }
       if (starRes) {
         setStarCount(newStarCount);
         setStarredByMe(newStarredByMe);
@@ -173,17 +203,8 @@ const ProfileViewModal = ({
         ts: Date.now(),
       });
     },
-    [userId]
+    [userId, isMe]
   );
-
-  const handleRefresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      await loadProfileData(true);
-    } finally {
-      setRefreshing(false);
-    }
-  }, [loadProfileData]);
 
   useEffect(() => {
     if (!userId) return;
@@ -216,6 +237,111 @@ const ProfileViewModal = ({
       .catch(() => setMyCommunitiesCount(0));
   }, [isMe]);
 
+  // ---- Posts tab: is user ki apni posts, pagination ke sath ----
+  const POSTS_PAGE = 10;
+  const [userPosts, setUserPosts] = useState<any[]>([]);
+  const [postsLoading, setPostsLoading] = useState(false);
+  const [postsLoadingMore, setPostsLoadingMore] = useState(false);
+  const [postsHasMore, setPostsHasMore] = useState(true);
+  const [openedPost, setOpenedPost] = useState<any>(null);
+  const postsOffsetRef = useRef(0);
+  const postsBusyRef = useRef(false);
+  const postsUserRef = useRef<string | number | undefined>(undefined);
+  const postsHasMoreRef = useRef(true);
+
+  const fetchUserPosts = useCallback(
+    async (reset: boolean) => {
+      if (!userId) return;
+      if (postsBusyRef.current && !reset) return;
+      if (!reset && !postsHasMoreRef.current) return;
+      postsBusyRef.current = true;
+      const forUser = userId;
+      postsUserRef.current = forUser;
+      if (reset) {
+        postsOffsetRef.current = 0;
+        setPostsLoading(true);
+      } else {
+        setPostsLoadingMore(true);
+      }
+      try {
+        const res = await getUserPosts(forUser, postsOffsetRef.current, POSTS_PAGE);
+        if (postsUserRef.current !== forUser) return; // beech mein dusri profile khul gayi
+        const batch: any[] = res.data?.posts || [];
+        postsOffsetRef.current += batch.length;
+        postsHasMoreRef.current = !!res.data?.has_more;
+        setPostsHasMore(postsHasMoreRef.current);
+        setUserPosts((prev) => {
+          if (reset) return batch;
+          const seen = new Set(prev.map((p) => String(p.id)));
+          return [...prev, ...batch.filter((p) => !seen.has(String(p.id)))];
+        });
+      } catch (err) {
+        // network error par list jaisi hai waisi rehne do, scroll par dobara try hoga
+      } finally {
+        postsBusyRef.current = false;
+        setPostsLoading(false);
+        setPostsLoadingMore(false);
+      }
+    },
+    [userId]
+  );
+
+  useEffect(() => {
+    if (!userId) return;
+    setUserPosts([]);
+    setOpenedPost(null);
+    postsHasMoreRef.current = true;
+    setPostsHasMore(true);
+    postsBusyRef.current = false;
+    fetchUserPosts(true);
+  }, [userId, fetchUserPosts]);
+
+  // Scroll neeche ke paas pahunchte hi agla page.
+  const handleScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (profileTab !== 'posts') return;
+      const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
+      if (contentOffset.y + layoutMeasurement.height >= contentSize.height - 300) {
+        fetchUserPosts(false);
+      }
+    },
+    [profileTab, fetchUserPosts]
+  );
+
+  // Post detail true-fullscreen hai - Header/BottomNav chhupane ke liye layout ko batao.
+  useEffect(() => {
+    if (!active) return;
+    setFullscreenOverlayOpen(!!openedPost);
+    return () => setFullscreenOverlayOpen(false);
+  }, [openedPost, active]);
+
+  const handlePostLike = useCallback(async (postId: string | number) => {
+    const flip = (p: any) =>
+      String(p.id) === String(postId)
+        ? { ...p, liked_by_me: !p.liked_by_me, likes_count: (p.likes_count || 0) + (p.liked_by_me ? -1 : 1) }
+        : p;
+    setUserPosts((prev) => prev.map(flip));
+    setOpenedPost((prev: any) => (prev && String(prev.id) === String(postId) ? flip(prev) : prev));
+    try {
+      const res = await togglePostLike(postId);
+      const sync = (p: any) => (String(p.id) === String(postId) ? { ...p, liked_by_me: !!res.data.liked, likes_count: res.data.likes } : p);
+      setUserPosts((prev) => prev.map(sync));
+      setOpenedPost((prev: any) => (prev && String(prev.id) === String(postId) ? sync(prev) : prev));
+    } catch {
+      setUserPosts((prev) => prev.map(flip)); // rollback
+      setOpenedPost((prev: any) => (prev && String(prev.id) === String(postId) ? flip(prev) : prev));
+    }
+  }, []);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([loadProfileData(true), (async () => { postsHasMoreRef.current = true; await fetchUserPosts(true); })()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadProfileData, fetchUserPosts]);
+
   // Toast auto-hide (unmount par clear).
   useEffect(() => {
     if (!actionToast) return;
@@ -241,7 +367,6 @@ const ProfileViewModal = ({
   const isElite = !!data?.[FIELD.elite];
   const avatarUrl = data?.[FIELD.avatar];
 
-  const myPosts = (feedPosts || []).filter((p) => String(p.user_id) === String(userId));
   const authHeaders = () => ({ headers: { Authorization: `Bearer ${getToken()}` } });
 
   const saveBio = async () => {
@@ -288,9 +413,42 @@ const ProfileViewModal = ({
         patchProfileCache({ data: next });
         return next;
       });
+      if (isMe) setMyAvatarUrl(res.data.avatar_url);
     } catch (err: any) {
       console.error('Photo upload error:', err.response?.data || err.message);
       showAlert(err.response?.data?.detail || "Couldn't upload photo, try again.");
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  // "Edit Profile Photo" ke corner pe chhota "x" - sirf tab dikhta hai jab
+  // custom photo lagi ho (avatarUrl set hai). Backend: POST /profile/remove-photo.
+  const handleRemovePhoto = async () => {
+    if (uploadingPhoto) return;
+    const ok = await confirmAction({
+      title: 'Remove profile photo?',
+      message: "You'll go back to the default avatar.",
+      confirmLabel: 'Remove',
+      danger: true,
+    });
+    if (!ok) return;
+
+    setUploadingPhoto(true);
+    try {
+      await axios.post(`${API_BASE}/profile/remove-photo`, null, authHeaders());
+      setData((prev: any) => {
+        const next = { ...(prev || {}), [FIELD.avatar]: null };
+        patchProfileCache({ data: next });
+        return next;
+      });
+      // Header ki pfp turant default par + client storage se apni purani
+      // cached pfp entry bhi hata do.
+      setMyAvatarUrl(null);
+      if (userId) invalidateAvatar(userId);
+    } catch (err: any) {
+      console.error('Photo remove error:', err.response?.data || err.message);
+      showAlert(err.response?.data?.detail || "Couldn't remove photo, try again.");
     } finally {
       setUploadingPhoto(false);
     }
@@ -343,7 +501,15 @@ const ProfileViewModal = ({
       from={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ type: 'timing', duration: 180 }}
-      style={[styles.screen, { zIndex, elevation: 20, bottom: getBottomNavTotal(insets.bottom), paddingTop: insets.top }]}
+      style={[
+        styles.screen,
+        {
+          zIndex,
+          elevation: 20,
+          bottom: embedded ? 0 : getBottomNavTotal(insets.bottom),
+          paddingTop: insets.top,
+        },
+      ]}
     >
       {/* Header - static, kabhi scroll/translate nahi hota */}
       <View style={styles.header}>
@@ -383,6 +549,8 @@ const ProfileViewModal = ({
         style={styles.flex}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
+        onScroll={handleScroll}
+        scrollEventThrottle={200}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#a3a3a3" colors={['#6366f1']} progressBackgroundColor="#161616" />}
       >
         <View style={styles.top}>
@@ -545,8 +713,23 @@ const ProfileViewModal = ({
                 <Text style={styles.actionLabel}>Edit Avatar</Text>
               </Pressable>
               <Pressable onPress={handlePhotoUpload} disabled={uploadingPhoto} style={[styles.actionCell, styles.actionDivider, uploadingPhoto && { opacity: 0.5 }]}>
-                <View style={styles.actionIcon}>
-                  <Ionicons name="camera-outline" size={18} color="#ffffff" />
+                <View>
+                  <View style={styles.actionIcon}>
+                    <Ionicons name="camera-outline" size={18} color="#ffffff" />
+                  </View>
+                  {/* Custom photo lagi ho tabhi "x" dikhao - default avatar
+                      par remove karne ko kuch hota hi nahi. */}
+                  {!!avatarUrl && (
+                    <Pressable
+                      onPress={handleRemovePhoto}
+                      disabled={uploadingPhoto}
+                      hitSlop={8}
+                      accessibilityLabel="Remove photo"
+                      style={styles.removePhotoBadge}
+                    >
+                      <Ionicons name="close" size={11} color="#ffffff" />
+                    </Pressable>
+                  )}
                 </View>
                 <Text style={styles.actionLabel}>Edit Profile Photo</Text>
               </Pressable>
@@ -598,14 +781,14 @@ const ProfileViewModal = ({
           </View>
 
           {profileTab === 'posts' ? (
-            loading ? (
-              <Text style={styles.muted}>Loading...</Text>
-            ) : myPosts.length === 0 ? (
-              <Text style={styles.muted}>User Has not created any posts .</Text>
+            postsLoading && userPosts.length === 0 ? (
+              <ActivityIndicator color="#a3a3a3" style={{ marginVertical: 16 }} />
+            ) : userPosts.length === 0 ? (
+              <Text style={styles.muted}>{isMe ? 'You have not created any posts yet.' : 'User has not created any posts.'}</Text>
             ) : (
               <View style={{ gap: 12 }}>
-                {myPosts.map((post) => (
-                  <Pressable key={post.id} onPress={() => onOpenPost?.(post)} style={({ pressed }) => [styles.postCard, pressed && { backgroundColor: '#262626' }]}>
+                {userPosts.map((post) => (
+                  <Pressable key={post.id} onPress={() => { onOpenPost ? onOpenPost(post) : setOpenedPost(post); }} style={({ pressed }) => [styles.postCard, pressed && { backgroundColor: '#262626' }]}>
                     {!!post.hashtag && (
                       <Pressable onPress={() => onOpenHashtag?.(post.hashtag)} style={styles.hashChip}>
                         <Ionicons name="pricetag-outline" size={10} color="#818cf8" />
@@ -613,8 +796,18 @@ const ProfileViewModal = ({
                       </Pressable>
                     )}
                     <Text style={styles.postText}>{renderWithMentions(post.content, null, onOpenCommunity)}</Text>
+                    {!!post.image_url && (
+                      <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode="cover" />
+                    )}
+                    <View style={styles.postMeta}>
+                      <Ionicons name={post.liked_by_me ? 'heart' : 'heart-outline'} size={14} color={post.liked_by_me ? '#f43f5e' : '#737373'} />
+                      <Text style={styles.postMetaText}>{post.likes_count || 0}</Text>
+                      <Ionicons name="chatbubble-outline" size={13} color="#737373" style={{ marginLeft: 12 }} />
+                      <Text style={styles.postMetaText}>{post.comments_count || 0}</Text>
+                    </View>
                   </Pressable>
                 ))}
+                {postsLoadingMore && <ActivityIndicator color="#a3a3a3" style={{ marginVertical: 12 }} />}
               </View>
             )
           ) : (
@@ -632,6 +825,22 @@ const ProfileViewModal = ({
           )}
         </View>
       </ScrollView>
+      
+      <PostDetailModal
+        topInset={insets.top + 12}
+        post={openedPost}
+        onClose={() => setOpenedPost(null)}
+        onToggleLike={handlePostLike}
+        onPostDeleted={(id) => {
+          setUserPosts((prev) => prev.filter((p) => String(p.id) !== String(id)));
+          setOpenedPost(null);
+        }}
+        onOpenProfile={(u) => {
+          if (String(u.id) !== String(userId)) requestOpenProfile(u as any);
+        }}
+        onOpenCommunity={(id) => requestOpenCommunityById({ id } as any)}
+        onOpenCommunityBySlug={(slug, name) => requestOpenCommunityBySlug(slug, name)}
+      />
 
       {!!actionToast && (
         <View style={styles.toast} pointerEvents="none">
@@ -771,6 +980,7 @@ const styles = StyleSheet.create({
   actionDivider: { borderLeftWidth: 1, borderLeftColor: '#161616' },
   actionIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#161616', borderWidth: 1, borderColor: '#262626', alignItems: 'center', justifyContent: 'center' },
   actionLabel: { fontSize: 12, color: '#d4d4d4', textAlign: 'center' },
+  removePhotoBadge: { position: 'absolute', top: -4, right: -4, width: 20, height: 20, borderRadius: 10, backgroundColor: '#dc2626', borderWidth: 1, borderColor: '#000000', alignItems: 'center', justifyContent: 'center' },
   blockedText: { marginTop: 24, fontSize: 14, color: '#6e6e6e' },
   msgBtn: { marginTop: 24, backgroundColor: '#16a34a', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 999 },
   msgBtnText: { color: '#ffffff', fontWeight: '700' },
@@ -784,6 +994,9 @@ const styles = StyleSheet.create({
   hashChip: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(79,70,229,0.2)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, marginBottom: 6 },
   hashText: { color: '#818cf8', fontSize: 12, fontWeight: '700' },
   postText: { color: '#f5f5f5', fontSize: 14 },
+  postImage: { width: '100%', height: 180, borderRadius: 10, marginTop: 8, backgroundColor: '#0f0f0f' },
+  postMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8 },
+  postMetaText: { color: '#737373', fontSize: 12 },
   toast: { position: 'absolute', top: 120, alignSelf: 'center', backgroundColor: '#161616', borderWidth: 1, borderColor: '#262626', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 999, maxWidth: '90%', zIndex: 20, elevation: 6 },
   toastText: { color: '#ffffff', fontSize: 14, fontWeight: '700', textAlign: 'center' },
   uploadOverlay: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.7)', alignItems: 'center', justifyContent: 'center', gap: 12, zIndex: 200, elevation: 40 },

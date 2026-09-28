@@ -1,4 +1,4 @@
-import React, { memo, useState } from 'react';
+import React, { memo, useEffect, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -40,6 +40,11 @@ const Header = ({
   // expired signed URL, network) - us case mein bhi default placeholder
   // par girna chahiye, blank/broken image icon nahi dikhna chahiye.
   const [imgFailed, setImgFailed] = useState(false);
+  // Naya URL aaye (upload/remove ke baad) to purana "failed" flag reset -
+  // warna ek baar load fail hone ke baad nayi pfp bhi kabhi nahi dikhti.
+  useEffect(() => {
+    setImgFailed(false);
+  }, [myAvatarUrl]);
   const showPhoto = !!myAvatarUrl && !imgFailed;
 
   return (
@@ -70,7 +75,7 @@ const Header = ({
           pressed && styles.iconBtnPressed,
         ]}
       >
-        <Ionicons name="cart-outline" size={20} color={isShopActive ? '#ffffff' : '#fbbf24'} />
+        <Ionicons name="cart-outline" size={20} color="#ffffff" />
       </Pressable>
 
       <Pressable
@@ -96,7 +101,7 @@ const Header = ({
         accessibilityLabel="Notifications"
         style={({ pressed }) => [styles.iconBtn, styles.iconBtnPlain, pressed && styles.iconBtnPressed]}
       >
-        <Ionicons name="notifications-outline" size={20} color="#fbbf24" />
+        <Ionicons name="notifications-outline" size={20} color="#ffffff" />
         {hasUnreadNotifications && <View style={styles.redDot} />}
       </Pressable>
     </View>

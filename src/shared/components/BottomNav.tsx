@@ -1,7 +1,9 @@
-import React, { memo } from 'react';
+import React, { memo, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BOTTOM_NAV_PX } from '../constants/layout';
+
+const DOUBLE_TAP_MS = 300;
 
 interface NavButtonProps {
   label: string;
@@ -27,46 +29,52 @@ const NavButton = ({ label, icon, onPress, badge = 0, active }: NavButtonProps) 
   </Pressable>
 );
 
-// Home slot ab ek NORMAL bottom-nav button hai (baaki icons jaisa hi,
-// beech mein) - "+" / "X" bas iska icon hai:
-//   - Home par ho aur sheet band ho  -> "+" (tap => sheet khulta hai)
-//   - Home par ho aur sheet khuli ho -> "×" (tap => sheet band hoti hai)
-//   - Kisi aur tab par ho            -> "×" (tap => seedha Home wapas)
-// (Pehle yeh nav-bar ke UPAR protrude karne wala floating circular FAB
-// tha - ab request par baaki 4 buttons ki tarah bar ke andar hi, beech
-// mein fit hota hai, koi position:absolute/overflow nahi.)
+// Home slot ab ek seedha "Home" button hai (Instagram ke home-tab icon
+// jaisa hi behaviour), quick-actions "+" se poori tarah alag ho gaya hai
+// (woh ab apni floating FAB hai, feed screen ke upar - dekho dashboard.tsx
+// + QuickActionsFab.tsx):
+//   - SINGLE TAP -> `onSingleTap` (koi bhi Rooms/DM/Community overlay khula
+//     ho to woh band karke feed par wapas; already feed par ho to no-op).
+//   - DOUBLE TAP -> `onDoubleTap` (Instagram jaisa: feed list top par
+//     scroll + reload) - sirf tab fire hota hai jab already home par ho
+//     aur koi overlay khula na ho (`canDoubleTap`), warna do quick taps
+//     bhi do alag single-tap navigation hi count honge.
+// Double-tap detection yahin local hai (RN mein built-in onDoubleTap nahi
+// hota) - ek chhota window (300ms) ke andar dusra tap aaye to double count.
 const HomeActionButton = ({
   isHomeActive,
-  sheetOpen,
-  onPress,
-  badge,
-  hidden,
+  canDoubleTap,
+  onSingleTap,
+  onDoubleTap,
 }: {
   isHomeActive: boolean;
-  sheetOpen: boolean;
-  onPress?: () => void;
-  badge?: boolean;
-  hidden?: boolean;
+  canDoubleTap: boolean;
+  onSingleTap?: () => void;
+  onDoubleTap?: () => void;
 }) => {
-  const showAsClose = sheetOpen || !isHomeActive;
+  const lastTapRef = useRef(0);
 
-  if (hidden) {
-    return <View style={styles.navButton} />;
-  }
+  const handlePress = () => {
+    const now = Date.now();
+    const isDoubleTap = canDoubleTap && now - lastTapRef.current < DOUBLE_TAP_MS;
+    lastTapRef.current = now;
+
+    if (isDoubleTap) {
+      lastTapRef.current = 0; // teesra jaldi tap phir se double na ban jaaye
+      onDoubleTap?.();
+      return;
+    }
+    onSingleTap?.();
+  };
 
   return (
     <Pressable
-      onPress={onPress}
-      accessibilityLabel={showAsClose ? 'Close / go home' : 'Open quick actions'}
+      onPress={handlePress}
+      accessibilityLabel="Home"
       style={({ pressed }) => [styles.navButton, pressed && styles.homeButtonPressed]}
     >
       <View style={styles.iconWrap}>
-        {showAsClose ? (
-          <Ionicons name="close" size={24} color="#ffffff" />
-        ) : (
-          <Ionicons name="add" size={26} color="#ffffff" />
-        )}
-        {badge ? <View style={styles.fabBadge} /> : null}
+        <Ionicons name={isHomeActive ? 'home' : 'home-outline'} size={24} color="#ffffff" />
       </View>
       <Text style={[styles.navLabel, isHomeActive && styles.navLabelActive]} numberOfLines={1}>
         Home
@@ -88,37 +96,34 @@ const HomeActionButton = ({
 interface BottomNavProps {
   onRoomsClick?: () => void;
   onDMClick?: () => void;
-  onHomeClick?: () => void;
   onCommunitiesClick?: () => void;
   onGameClick?: () => void;
   dmBadgeCount?: number;
   isHomeActive?: boolean;
-  quickActionsOpen?: boolean;
-  onHomeActionClick?: () => void;
-  homeActionBadge?: boolean;
+  // Single tap: feed par wapas (overlay khula ho to pehle wahi band).
+  onHomeSingleTap?: () => void;
+  // Double tap: feed list top par scroll + reload - sirf tab possible jab
+  // already home par ho aur koi overlay khula na ho.
+  onHomeDoubleTap?: () => void;
   isRoomsActive?: boolean;
   isDMActive?: boolean;
   isCommunitiesActive?: boolean;
   isGameActive?: boolean;
-  hideHomeFab?: boolean;
 }
 
 const BottomNav = ({
   onRoomsClick,
   onDMClick,
-  onHomeClick,
   onCommunitiesClick,
   onGameClick,
   dmBadgeCount = 0,
   isHomeActive = false,
-  quickActionsOpen = false,
-  onHomeActionClick,
-  homeActionBadge = false,
+  onHomeSingleTap,
+  onHomeDoubleTap,
   isRoomsActive = false,
   isDMActive = false,
   isCommunitiesActive = false,
   isGameActive = false,
-  hideHomeFab = false,
 }: BottomNavProps) => {
   return (
     <View style={styles.bar}>
@@ -126,10 +131,9 @@ const BottomNav = ({
       <NavButton label="DM" icon="send-outline" onPress={onDMClick} badge={dmBadgeCount} active={isDMActive} />
       <HomeActionButton
         isHomeActive={isHomeActive}
-        sheetOpen={quickActionsOpen}
-        onPress={onHomeActionClick || onHomeClick}
-        badge={homeActionBadge}
-        hidden={hideHomeFab}
+        canDoubleTap={isHomeActive}
+        onSingleTap={onHomeSingleTap}
+        onDoubleTap={onHomeDoubleTap}
       />
       <NavButton label="Community" icon="people-outline" onPress={onCommunitiesClick} active={isCommunitiesActive} />
       <NavButton label="Game" icon="game-controller-outline" onPress={onGameClick} active={isGameActive} />
@@ -198,17 +202,6 @@ const styles = StyleSheet.create({
   },
   homeButtonPressed: {
     opacity: 0.7,
-  },
-  fabBadge: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: '#ef4444', // star-danger-500
-    borderWidth: 2,
-    borderColor: '#000',
   },
 });
 

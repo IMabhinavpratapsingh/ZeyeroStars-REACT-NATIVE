@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { StyleSheet, View, type FlatList } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import RoomsStrip from '../../features/feed/components/RoomsStrip';
 import FeedList from '../../features/feed/components/FeedList';
 import CreatePostModal, { type PickerCommunity } from '../../features/feed/components/CreatePostModal';
 import PostDetailModal from '../../features/feed/components/PostDetailModal';
+import QuickActionsFab from '../../shared/components/QuickActionsFab';
 
 import useDashboardBalance from '../../features/dashboard/hooks/useDashboardBalance';
 import useFeedState, { type FeedPost } from '../../features/dashboard/hooks/useFeedState';
@@ -14,6 +15,10 @@ import { listMyCommunities } from '../../features/communities/services/communiti
 import type { PickerCommunity as LockedCommunity } from '../../features/feed/components/CreatePostModal';
 import { showAlert } from '../../shared/utils/alertBus';
 import { requestOpenRooms } from '../../shared/utils/navOverlayBus';
+import { subscribeFeedScrollTopReload } from '../../shared/utils/feedScrollBus';
+import { requestOpenCommunityById, requestOpenCommunityBySlug } from '../../shared/utils/communityOpenBus';
+import { requestOpenProfile } from '../../shared/utils/profileOpenBus';
+import { setFullscreenOverlayOpen } from '../../shared/utils/fullscreenOverlayBus';
 
 // WEB -> RN: Home ka body (RoomsStrip + FeedList + post modals). Header/
 // BottomNav/QuickActionsSheet ab (tabs)/_layout.tsx ke persistent shell
@@ -69,10 +74,25 @@ export default function DashboardScreen() {
   // OR kar dete hain (jo bhi pehle badle, RoomsStrip refetch karega).
   const [roomsPullRefreshTick, setRoomsPullRefreshTick] = useState(0);
 
+  // Home button ka DOUBLE TAP (BottomNav, `(tabs)/_layout.tsx` ke andar)
+  // "scroll feed top par + reload" chahta hai, Instagram jaisa - us button
+  // ka parent alag hai isliye ref seedha nahi mil sakta, `feedScrollBus`
+  // se event sunte hain.
+  const feedListRef = useRef<FlatList<FeedPost>>(null);
+
   useEffect(() => {
     fetchBalance();
     fetchFeed();
   }, [fetchBalance, fetchFeed]);
+
+  useEffect(
+    () =>
+      subscribeFeedScrollTopReload(() => {
+        feedListRef.current?.scrollToOffset({ offset: 0, animated: true });
+        refreshFeed();
+      }),
+    [refreshFeed]
+  );
 
   const loadMyCommunities = useCallback(async () => {
     try {
@@ -144,6 +164,14 @@ export default function DashboardScreen() {
 
   const liveOpenedPost = openedPost ? posts.find((p) => p.id === openedPost.id) || openedPost : null;
 
+  // PostDetailModal true-fullscreen hai (no app Header, no BottomNav) -
+  // (tabs)/_layout.tsx ko bata do jab khule/band ho, taaki wo dono hide/
+  // wapas dikha sake.
+  useEffect(() => {
+    setFullscreenOverlayOpen(!!openedPost);
+    return () => setFullscreenOverlayOpen(false);
+  }, [openedPost]);
+
   return (
     <View style={styles.screen}>
       <RoomsStrip
@@ -155,6 +183,7 @@ export default function DashboardScreen() {
         refreshSignal={`${roomsStripRefreshKey}:${roomsPullRefreshTick}`}
       />
       <FeedList
+        listRef={feedListRef}
         posts={posts}
         loading={loading}
         loadingMore={loadingMore}
@@ -166,7 +195,15 @@ export default function DashboardScreen() {
         onLoadMore={loadMoreFeed}
         onToggleLike={handleToggleLike}
         onOpenPost={setOpenedPost}
+        onOpenProfile={(u) => requestOpenProfile(u)}
+        onOpenCommunity={(id) => requestOpenCommunityById({ id })}
+        onOpenCommunityBySlug={(slug, name) => requestOpenCommunityBySlug(slug, name)}
       />
+
+      {/* Floating "++" quick-actions button - sirf feed list ke saath,
+          CreatePostModal/PostDetailModal khule hote hi gayab ho jaata
+          hai (neeche unmount condition). */}
+      {!showCreate && !openedPost && <QuickActionsFab />}
 
       <CreatePostModal
         show={showCreate}
@@ -186,7 +223,14 @@ export default function DashboardScreen() {
         onChangeCommunityId={setCommunityId}
       />
 
-      <PostDetailModal post={liveOpenedPost} onClose={() => setOpenedPost(null)} onToggleLike={handleToggleLike} />
+      <PostDetailModal
+        post={liveOpenedPost}
+        onClose={() => setOpenedPost(null)}
+        onToggleLike={handleToggleLike}
+        onOpenProfile={(u) => requestOpenProfile(u)}
+        onOpenCommunity={(id) => requestOpenCommunityById({ id })}
+        onOpenCommunityBySlug={(slug, name) => requestOpenCommunityBySlug(slug, name)}
+      />
     </View>
   );
 }

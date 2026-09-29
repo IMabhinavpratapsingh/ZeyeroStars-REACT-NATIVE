@@ -14,6 +14,7 @@ import axios from 'axios';
 import { Image } from 'expo-image';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
+  Easing,
   runOnJS,
   type SharedValue,
   useAnimatedStyle,
@@ -69,8 +70,11 @@ import {
  *   anti-overlap") skip kiya - dense room me do bubbles kabhi-kabhi
  *   overlap kar sakte hain, cosmetic hai.
  * - Ab LONG-PRESS se PlayerPreviewModal khulta hai (touch devices par
- *   yehi natural "info" gesture hai); double-tap poori tarah move-to ke
- *   liye reserved hai (web jaisa hi).
+ *   yehi natural "info" gesture hai). SINGLE TAP se floor par
+ *   kisi bhi jagah move hota hai (double-tap nahi). Move TELEPORT nahi hota -
+ *   avatar point A se point B tak dheere-dheere chalta hua dikhta hai (har
+ *   member ka apna smooth walk animation, useWalkPosition dekho). Doosre
+ *   members ki position server se badalti hai to woh bhi chalte hue dikhte hain.
  */
 
 const ROOM_WIDTH = 1000;
@@ -83,13 +87,21 @@ const AVATAR_HEAD_TOP_FRACTION = 0.3;
 const AVATAR_FEET_DOWN_SHIFT_PX = 8;
 
 const CAMERA_FOLLOW_MS = 220;
-const MOVE_THROTTLE_MS = 150;
 
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 6;
 
 const LONG_PRESS_MS = 450;
-const DOUBLE_TAP_MAX_DELAY_MS = 300;
+// Tap sirf tab maana jaye jab ungli 250ms se pehle utha li jaye - taaki
+// long-press (450ms, preview modal) aur tap (move) kabhi ek saath na chalein.
+const TAP_MAX_DURATION_MS = 250;
+
+// WALK SPEED: scene ki width ka kitna fraction har second chalta hai.
+// 0.14 => poora room cross karne mein ~7 sec. Slow chahiye to ghatao
+// (0.10), tez chahiye to badhao (0.20).
+const WALK_SPEED_SCENE_FRACTION_PER_SEC = 0.14;
+const WALK_MIN_MS = 250;
+const WALK_MAX_MS = 9000;
 
 const TIP_FLY_DURATION_MS = 1200;
 const REACTION_FLY_DURATION_MS = 700;
@@ -102,6 +114,41 @@ const EMPTY_PROFILE: Record<string, any> = {};
 function clamp(v: number, lo: number, hi: number) {
   'worklet';
   return Math.min(hi, Math.max(lo, v));
+}
+
+// ---------------------------------------------------------------------
+// Walking position: target (leftPx, topPx) badalne par teleport ki jagah
+// purani jagah se nayi jagah tak constant speed (linear) se slide karta hai.
+// Distance jitna zyada, duration utni zyada - isliye door ka move slow aur
+// lamba dikhta hai. Pehli render / scene resize (scale change) par snap
+// karta hai (animate nahi) taaki room khulte hi sab origin se na chalein.
+// ---------------------------------------------------------------------
+
+function useWalkPosition(leftPx: number, topPx: number, scale: number) {
+  const x = useSharedValue(leftPx);
+  const y = useSharedValue(topPx);
+  const prev = useRef({ left: leftPx, top: topPx, scale });
+
+  useEffect(() => {
+    const p = prev.current;
+    if (p.scale !== scale) {
+      x.value = leftPx;
+      y.value = topPx;
+    } else if (p.left !== leftPx || p.top !== topPx) {
+      const dist = Math.hypot(leftPx - x.value, topPx - y.value);
+      const pxPerSec = Math.max(1, scale * WALK_SPEED_SCENE_FRACTION_PER_SEC);
+      const duration = clamp((dist / pxPerSec) * 1000, WALK_MIN_MS, WALK_MAX_MS);
+      const cfg = { duration, easing: Easing.linear };
+      x.value = withTiming(leftPx, cfg);
+      y.value = withTiming(topPx, cfg);
+    }
+    prev.current = { left: leftPx, top: topPx, scale };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leftPx, topPx, scale]);
+
+  return useAnimatedStyle(() => ({
+    transform: [{ translateX: x.value }, { translateY: y.value }],
+  }));
 }
 
 // ---------------------------------------------------------------------
@@ -184,6 +231,7 @@ interface RenderMember {
   member: any;
   leftPx: number;
   topPx: number;
+  sceneScale: number;
   equippedByCategory: Record<string, any>;
   photoUrl: string | null | undefined;
   avatarVersion: any;
@@ -200,12 +248,14 @@ const MemberAvatarCard = memo(function MemberAvatarCard({
 }: { rm: RenderMember; onLongPress: (uid: string) => void }) {
   const cachedPhotoUrl = useAvatarImage(rm.uid, rm.photoUrl, rm.avatarVersion);
   const showBadgeRow = rm.power > 0 || rm.isVerified || rm.isElite;
+  const walkStyle = useWalkPosition(rm.leftPx, rm.topPx, rm.sceneScale);
 
   return (
-    <View
+    <Animated.View
       style={[
         styles.cardWrap,
-        { left: rm.leftPx, top: rm.topPx, zIndex: 100 + (rm.isMe ? 50 : 0) },
+        { zIndex: 100 + (rm.isMe ? 50 : 0) },
+        walkStyle,
       ]}
     >
       <View style={styles.cardBox}>
@@ -230,7 +280,7 @@ const MemberAvatarCard = memo(function MemberAvatarCard({
         </Pressable>
       </View>
 
-    </View>
+    </Animated.View>
   );
 });
 
@@ -249,11 +299,15 @@ const MemberBubble = memo(function MemberBubble({
   const counterScale = useAnimatedStyle(() => ({
     transform: [{ scale: 1 / zoom.value }],
   }));
+  // Hamesha mounted rehta hai (content na ho to null render) taaki bubble ka
+  // walk position avatar ke saath sync rahe - bubble mid-walk mount hota to
+  // seedha destination par kood jata.
+  const walkStyle = useWalkPosition(rm.leftPx, rm.topPx, rm.sceneScale);
   if (!rm.bubbleContent) return null;
 
   return (
-    <View
-      style={[styles.bubbleWrap, { left: rm.leftPx, top: rm.topPx }]}
+    <Animated.View
+      style={[styles.bubbleWrap, walkStyle]}
       pointerEvents="none"
     >
       <View style={styles.cardBox} pointerEvents="none">
@@ -276,7 +330,7 @@ const MemberBubble = memo(function MemberBubble({
           )}
         </Animated.View>
       </View>
-    </View>
+    </Animated.View>
   );
 });
 
@@ -329,7 +383,6 @@ const RoomFloorView = forwardRef<RoomFloorViewHandle, RoomFloorViewProps>(functi
   useEffect(() => subscribeMemberProfileUpdates(() => forceRender((n) => n + 1)), []);
 
   const [localSelfPos, setLocalSelfPos] = useState<{ x: number; y: number } | null>(null);
-  const lastMoveAtRef = useRef(0);
 
   const sceneBasePx = Math.max(containerSize.width, containerSize.height);
   const sceneWidthPx = sceneBasePx * ROOM_SCENE_SIZE_MULTIPLIER;
@@ -356,7 +409,6 @@ const RoomFloorView = forwardRef<RoomFloorViewHandle, RoomFloorViewProps>(functi
   const zoom = useSharedValue(1);
   const startCameraX = useSharedValue(0);
   const startCameraY = useSharedValue(0);
-  const startZoom = useSharedValue(1);
 
   const clampCameraX = useCallback(
     (x: number, z: number) => {
@@ -450,9 +502,9 @@ const RoomFloorView = forwardRef<RoomFloorViewHandle, RoomFloorViewProps>(functi
 
   const sendMove = useCallback(
     (x: number, y: number) => {
-      const now = Date.now();
-      if (now - lastMoveAtRef.current < MOVE_THROTTLE_MS) return;
-      lastMoveAtRef.current = now;
+      // Single tap ek discrete event hai - throttle nahi, warna jaldi-jaldi
+      // do tap par doosra server tak nahi pahunchta aur local/server position
+      // alag ho jaati thi.
       if (room) networkManager.send({ type: moveMessageType, [roomIdField]: room.id, x, y });
     },
     [room, moveMessageType, roomIdField]
@@ -468,7 +520,7 @@ const RoomFloorView = forwardRef<RoomFloorViewHandle, RoomFloorViewProps>(functi
     [clampRoomX, clampRoomY, sendMove]
   );
 
-  // ---- Gestures: one-finger pan, two-finger pinch-zoom, double-tap move ----
+  // ---- Gestures: one-finger pan, two-finger pinch-zoom, single-tap move ----
   const panGesture = Gesture.Pan()
     .maxPointers(1)
     .minPointers(1)
@@ -481,25 +533,31 @@ const RoomFloorView = forwardRef<RoomFloorViewHandle, RoomFloorViewProps>(functi
       cameraY.value = clampCameraY(startCameraY.value + e.translationY / zoom.value, zoom.value);
     });
 
+  // FOCAL-POINT ZOOM (web handlePointerMove pinch jaisa): ungliyon ke beech ka
+  // scene point zoom ke dauran ussi screen position par tika rehta hai.
+  // Box container ke center se scale hota hai, isliye container coords (fx, fy)
+  // -> box-local = fx / zoom (web ka clientToLocal simplify hokar yahi banta hai).
+  // e.focalX/Y tabhi container coords hote hain jab GestureDetector STATIC
+  // container par ho (neeche render mein) - scale hone wale box par nahi.
+  const pinchStartZoom = useSharedValue(1);
+  const pinchAnchorX = useSharedValue(0);
+  const pinchAnchorY = useSharedValue(0);
   const pinchGesture = Gesture.Pinch()
-    .onStart(() => {
-      startZoom.value = zoom.value;
-      startCameraX.value = cameraX.value;
-      startCameraY.value = cameraY.value;
+    .onStart((e) => {
+      pinchStartZoom.value = zoom.value;
+      pinchAnchorX.value = e.focalX / zoom.value - cameraX.value;
+      pinchAnchorY.value = e.focalY / zoom.value - cameraY.value;
     })
     .onUpdate((e) => {
-      const newZoom = clamp(startZoom.value * e.scale, MIN_ZOOM, MAX_ZOOM);
+      // Pinch chhodte waqt ek ungli pehle uthti hai: tab focal point bachi hui
+      // ungli par kood jaata hai (aur scale bhi hil jaata hai) - wahi "release par
+      // snap" tha. Isliye sirf tab apply karo jab 2 ungliyan chhoo rahi hon; last
+      // valid 2-finger state hi camera mein tika rehta hai.
+      if (e.numberOfPointers < 2) return;
+      const newZoom = clamp(pinchStartZoom.value * e.scale, MIN_ZOOM, MAX_ZOOM);
       zoom.value = newZoom;
-      const focalSceneX = (e.focalX - containerSize.width / 2) / startZoom.value - startCameraX.value + containerSize.width / (2 * startZoom.value);
-      const focalSceneY = (e.focalY - containerSize.height / 2) / startZoom.value - startCameraY.value + containerSize.height / (2 * startZoom.value);
-      cameraX.value = clampCameraX(
-        (e.focalX - containerSize.width / 2) / newZoom - focalSceneX + containerSize.width / (2 * newZoom),
-        newZoom
-      );
-      cameraY.value = clampCameraY(
-        (e.focalY - containerSize.height / 2) / newZoom - focalSceneY + containerSize.height / (2 * newZoom),
-        newZoom
-      );
+      cameraX.value = clampCameraX(e.focalX / newZoom - pinchAnchorX.value, newZoom);
+      cameraY.value = clampCameraY(e.focalY / newZoom - pinchAnchorY.value, newZoom);
     });
 
   const doMoveTap = useCallback(
@@ -512,27 +570,27 @@ const RoomFloorView = forwardRef<RoomFloorViewHandle, RoomFloorViewProps>(functi
     [containerSize.width, containerSize.height, moveSelfTo, pxToRoomX, pxToRoomY]
   );
 
-  const doubleTapGesture = Gesture.Tap()
-    .numberOfTaps(2)
-    .maxDelay(DOUBLE_TAP_MAX_DELAY_MS)
-    .onEnd((e) => {
-      runOnJS(doMoveTap)(e.x, e.y, zoom.value);
+  // SINGLE TAP => move. Pan (ungli hilne par) tap ko cancel kar deta hai,
+  // isliye camera drag karte waqt avatar chalna shuru nahi hota.
+  const tapGesture = Gesture.Tap()
+    .maxDuration(TAP_MAX_DURATION_MS)
+    .onEnd((e, success) => {
+      if (success) runOnJS(doMoveTap)(e.x, e.y, zoom.value);
     });
 
   const composedGesture = Gesture.Simultaneous(
-    Gesture.Race(doubleTapGesture, panGesture),
+    Gesture.Race(tapGesture, panGesture),
     pinchGesture
   );
 
-  const boxStyle = useAnimatedStyle(() => ({
-    width: containerSize.width ? containerSize.width / zoom.value : 0,
-    height: containerSize.height ? containerSize.height / zoom.value : 0,
-    transform: [{ scale: zoom.value }],
-  }));
+  // TRANSFORM-ONLY CAMERA. Web mein box (W/z x H/z) ko scale(z) karke center se
+  // zoom karte the - matlab screen = z * (scenePoint + camera). Wahi cheez yahan
+  // ek hi transform se: scale(z) top-left origin se, phir translate(camera).
+  // Pehle box ki width/height har frame animate hoti thi - RN mein layout props
+  // transform se alag frame par apply hote hain, isliye zoom "snap" karta tha.
+  // Ab koi layout prop animate nahi hota, sirf GPU transform.
   const sceneStyle = useAnimatedStyle(() => ({
-    width: sceneWidthPx,
-    height: floorHeightPx,
-    transform: [{ translateX: cameraX.value }, { translateY: cameraY.value }],
+    transform: [{ scale: zoom.value }, { translateX: cameraX.value }, { translateY: cameraY.value }],
   }));
 
   // ---- Members -> render list ----
@@ -565,6 +623,7 @@ const RoomFloorView = forwardRef<RoomFloorViewHandle, RoomFloorViewProps>(functi
           member,
           leftPx: roomXToPx(pos.x),
           topPx: roomYToPx(pos.y),
+          sceneScale: sceneWidthPx,
           equippedByCategory: getEquippedByCategory(profile[FIELD.equipped], itemsById),
           photoUrl: profile[FIELD.avatar],
           avatarVersion: profile[FIELD.avatarVersion],
@@ -576,7 +635,7 @@ const RoomFloorView = forwardRef<RoomFloorViewHandle, RoomFloorViewProps>(functi
           bubbleContent,
         };
       }),
-    [members, positions, localSelfPos, bubbles, typingSet, itemsById, roomXToPx, roomYToPx, myId, resolvePos, renderTick]
+    [members, positions, localSelfPos, bubbles, typingSet, itemsById, roomXToPx, roomYToPx, sceneWidthPx, myId, resolvePos, renderTick]
   );
 
   // ---- Long-press preview ----
@@ -652,10 +711,10 @@ const RoomFloorView = forwardRef<RoomFloorViewHandle, RoomFloorViewProps>(functi
 
   return (
     <>
-      <View style={styles.container} onLayout={onLayout}>
-        <GestureDetector gesture={composedGesture}>
-          <Animated.View style={[styles.box, boxStyle]}>
-            <Animated.View style={[styles.scene, sceneStyle, floorBgStyle]}>
+      <GestureDetector gesture={composedGesture}>
+        <View style={styles.container} onLayout={onLayout}>
+          <View style={[styles.box, { width: containerSize.width, height: containerSize.height }]}>
+            <Animated.View style={[styles.scene, { width: sceneWidthPx, height: floorHeightPx }, sceneStyle, floorBgStyle]}>
               {!!room?.room_bg_url && (
                 <Image
                   source={{ uri: room.room_bg_url }}
@@ -666,11 +725,11 @@ const RoomFloorView = forwardRef<RoomFloorViewHandle, RoomFloorViewProps>(functi
                 />
               )}
               {renderMembers.map((rm) => (
-                <MemberAvatarCard key={rm.uid} rm={rm} onLongPress={handleLongPress} />
+                <MemberAvatarCard key={`${room?.id}-${rm.uid}`} rm={rm} onLongPress={handleLongPress} />
               ))}
-              {renderMembers.map((rm) =>
-                rm.bubbleContent ? <MemberBubble key={`bubble-${rm.uid}`} rm={rm} zoom={zoom} /> : null
-              )}
+              {renderMembers.map((rm) => (
+                <MemberBubble key={`bubble-${room?.id}-${rm.uid}`} rm={rm} zoom={zoom} />
+              ))}
 
               {flyingTips.map((f) => (
                 <FlyingTip
@@ -695,9 +754,9 @@ const RoomFloorView = forwardRef<RoomFloorViewHandle, RoomFloorViewProps>(functi
                 />
               ))}
             </Animated.View>
-          </Animated.View>
-        </GestureDetector>
-      </View>
+          </View>
+        </View>
+      </GestureDetector>
 
       <PlayerPreviewModal
         preview={previewMember}
@@ -715,8 +774,9 @@ const RoomFloorView = forwardRef<RoomFloorViewHandle, RoomFloorViewProps>(functi
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000000', overflow: 'hidden' },
   box: { overflow: 'hidden' },
-  scene: { position: 'absolute', top: 0, left: 0 },
-  cardWrap: { position: 'absolute' },
+  // transformOrigin top-left: scene sirf transform se hilta/zoom hota hai (layout kabhi nahi badalta).
+  scene: { position: 'absolute', top: 0, left: 0, transformOrigin: 'top left' },
+  cardWrap: { position: 'absolute', left: 0, top: 0 },
   cardBox: {
     height: ROOM_CARD_HEIGHT_PX,
     width: AVATAR_CARD_WIDTH_PX,
@@ -736,7 +796,7 @@ const styles = StyleSheet.create({
   },
   powerPill: { flexDirection: 'row', alignItems: 'center', gap: 1 },
   powerText: { fontSize: 8, fontWeight: '700', color: '#facc15' },
-  bubbleWrap: { position: 'absolute', zIndex: 9999 },
+  bubbleWrap: { position: 'absolute', left: 0, top: 0, zIndex: 9999 },
   bubbleAnchor: {
     position: 'absolute',
     left: 0,

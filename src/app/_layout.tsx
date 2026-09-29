@@ -7,6 +7,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { loadNetworkToken, getToken } from '../shared/services/NetworkManager';
 import { loadMyId } from '../shared/utils/auth';
 import { hydrateAvatarCache } from '../features/avatar/services/avatarCache';
+import { loadRulesWarningOptOut } from '../shared/utils/rulesWarningBus';
 import { setupAuthInterceptor } from '../shared/services/authInterceptor';
 import { setupPushNotifications } from '../shared/services/pushNotifications';
 import { handleHardwareBack } from '../shared/utils/backButtonStack';
@@ -39,7 +40,14 @@ export default function RootLayout() {
   // karo (purane users ke liye bhi - dekho original App.jsx comment).
   useEffect(() => {
     (async () => {
-      await Promise.all([loadNetworkToken(), loadMyId(), hydrateAvatarCache()]);
+      // loadRulesWarningOptOut: "Don't show again" flag AsyncStorage se cache mein
+      // load karo - iske bina restart par hamesha false milta aur warning baar-baar aati.
+      await Promise.all([
+        loadNetworkToken(),
+        loadMyId(),
+        hydrateAvatarCache(),
+        loadRulesWarningOptOut(),
+      ]);
       setupAuthInterceptor();
 
       // main.jsx (capacitor) mein ye dono app-start pe ek baar chalte the -

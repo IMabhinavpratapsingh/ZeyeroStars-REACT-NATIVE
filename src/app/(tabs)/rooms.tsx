@@ -20,6 +20,7 @@ import { getMyId } from '../../shared/utils/auth';
 import useWebSocket from '../../shared/hooks/useWebSocket';
 import useBackButtonHandler from '../../shared/hooks/useBackButtonHandler';
 import useRoomState from '../../features/dashboard/hooks/useRoomState';
+import RoomRadioPlayer from '../../features/rooms/components/RoomRadioPlayer';
 import RoomChatWindow from '../../features/rooms/components/RoomChatWindow';
 import LoadingOverlay from '../../shared/components/LoadingOverlay';
 
@@ -227,6 +228,9 @@ export default function RoomsScreen() {
           )}
         />
       )}
+
+      {/* Room minimize hone par bhi mounted - radio sirf activeRoom null hone par rukta hai */}
+      <RoomRadioPlayer radioUrl={roomState.activeRoom?.radio_url ?? null} />
 
       {roomState.activeRoom && (
         <RoomChatWindow

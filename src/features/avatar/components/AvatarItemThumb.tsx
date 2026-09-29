@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { toSvgComponent } from './AvatarLayers';
+import SvgAssetView from './SvgAssetView';
 
 /**
  * Selection box me item ki thumbnail dikhata hai.
@@ -29,15 +29,13 @@ interface AvatarItemThumbProps {
 }
 
 const AvatarItemThumb = ({ asset, alt }: AvatarItemThumbProps) => {
-  const SvgAsset = toSvgComponent(asset);
-
-  if (!SvgAsset) {
-    return <Text style={styles.noPreview}>No preview</Text>;
-  }
-
   return (
     <View style={styles.fill} accessibilityLabel={alt}>
-      <SvgAsset width="100%" height="100%" preserveAspectRatio="xMidYMid meet" />
+      <SvgAssetView
+        asset={asset}
+        preserveAspectRatio="xMidYMid meet"
+        fallback={<Text style={styles.noPreview}>No preview</Text>}
+      />
     </View>
   );
 };

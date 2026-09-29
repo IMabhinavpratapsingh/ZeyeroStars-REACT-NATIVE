@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef } from 'react';
-import { useAudioPlayer } from 'expo-audio';
+import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
 
 // Room ka radio Dashboard ke root mein hamesha mounted rehta hai - room
 // ki chat screen minimize ho to bhi yeh component unmount nahi hota,
@@ -20,6 +20,11 @@ const RoomRadioPlayer = ({ radioUrl }: RoomRadioPlayerProps) => {
   const loadedUrlRef = useRef<string | null>(null);
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryCountRef = useRef(0);
+
+  useEffect(() => {
+    // iOS silent switch / background me bhi radio bajna chahiye.
+    setAudioModeAsync({ playsInSilentMode: true, shouldPlayInBackground: true }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!radioUrl) {

@@ -415,12 +415,6 @@ const RoomChatWindow = ({
           />
         )}
 
-        {!isChatOnly && (
-          <Pressable onPress={() => setShowChatDrawer((v) => !v)} style={styles.chatToggle}>
-            <Ionicons name={showChatDrawer ? 'chevron-down' : 'chevron-up'} size={16} color="#ffffff" />
-          </Pressable>
-        )}
-
         {chatDrawerOpen && (
           <View style={[styles.chatDrawer, isChatOnly && styles.chatDrawerOpaque]} pointerEvents="box-none">
             <ScrollView
@@ -557,6 +551,12 @@ const RoomChatWindow = ({
           </View>
         )}
 
+        {!isChatOnly && (
+          <Pressable onPress={() => setShowChatDrawer((v) => !v)} style={styles.chatToggle}>
+            <Ionicons name={showChatDrawer ? 'chevron-down' : 'chevron-up'} size={16} color="#ffffff" />
+          </Pressable>
+        )}
+
         <View style={styles.inputRow}>
           <TextInput
             style={styles.input}
@@ -640,11 +640,11 @@ const styles = StyleSheet.create({
   exitBtnText: { color: '#fca5a5', fontSize: 11, fontWeight: '700' },
   floorArea: { flex: 1, position: 'relative', overflow: 'hidden' },
   chatToggle: {
-    position: 'absolute', alignSelf: 'center', bottom: 64, width: 36, height: 28, borderRadius: 14,
+    alignSelf: 'center', marginBottom: 8, width: 36, height: 28, borderRadius: 14,
     backgroundColor: 'rgba(15,19,41,0.7)', borderWidth: 1, borderColor: '#2a2f55',
-    alignItems: 'center', justifyContent: 'center', zIndex: 20,
+    alignItems: 'center', justifyContent: 'center',
   },
-  chatDrawer: { position: 'absolute', left: 0, right: 0, bottom: 0, top: '45%', zIndex: 15 },
+  chatDrawer: { position: 'absolute', left: 0, right: 0, bottom: 0, top: '45%', zIndex: 15, backgroundColor: 'rgba(15,19,41,0.72)' },
   chatDrawerOpaque: { top: 0, backgroundColor: '#0f1329' },
   chatDrawerContent: { padding: 12, gap: 10 },
   centerRow: { alignItems: 'center' },

@@ -21,6 +21,7 @@ import useBackButtonHandler from '../../../shared/hooks/useBackButtonHandler';
 import { PersistentSlide } from '../../../shared/components/motion/ScreenTransition';
 import useRoomState from '../../dashboard/hooks/useRoomState';
 import RoomChatWindow from './RoomChatWindow';
+import RoomRadioPlayer from './RoomRadioPlayer';
 import LoadingOverlay from '../../../shared/components/LoadingOverlay';
 import { subscribeOpenRoom, notifyMyRoomChanged } from '../../../shared/utils/navOverlayBus';
 
@@ -226,6 +227,8 @@ export default function RoomsOverlayScreen({ show, onClose }: RoomsOverlayScreen
             )}
           />
         )}
+
+        <RoomRadioPlayer radioUrl={roomState.activeRoom?.radio_url ?? null} />
 
         {roomState.activeRoom && (
           <RoomChatWindow

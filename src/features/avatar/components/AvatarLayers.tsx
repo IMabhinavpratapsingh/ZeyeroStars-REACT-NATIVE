@@ -1,6 +1,7 @@
 import React, { memo, useCallback, useState } from 'react';
 import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import AvatarBase from './AvatarBase';
+import SvgAssetView, { toSvgComponent } from './SvgAssetView';
 import { getAssetUrl, AVATAR_ASPECT_RATIO_NUM } from '../utils/avatarAssets';
 
 /**
@@ -30,30 +31,18 @@ export type EquippedByCategory = Record<
   (string | number)[] | string | number | null | undefined
 >;
 
-/**
- * `require('x.svg')` ka result transformer/Babel-interop ke hisaab se kabhi
- * seedha component hota hai, kabhi `{ default: Component }` module object.
- * Dono cases handle karta hai (avatarAssets.ts ka REGISTRY jaisa bhi ho,
- * yahan crash nahi hoga). Component nahi mila to null.
- */
-export const toSvgComponent = (asset: any): React.ComponentType<any> | null => {
-  if (!asset) return null;
-  const candidate = asset.default ?? asset;
-  const isComponent =
-    typeof candidate === 'function' ||
-    (typeof candidate === 'object' && candidate !== null && '$$typeof' in candidate);
-  return isComponent ? candidate : null;
-};
+// toSvgComponent ab SvgAssetView.tsx mein hai (SVG ko file se padhkar SvgXml se
+// dikhane wala logic bhi wahin hai); purane imports na tootein isliye re-export.
+export { toSvgComponent };
 
 const toIdList = (v: EquippedByCategory[string]): (string | number)[] =>
   Array.isArray(v) ? v : v != null ? [v] : [];
 
 const AssetLayer = memo(({ asset }: { asset: any }) => {
-  const SvgAsset = toSvgComponent(asset);
-  if (!SvgAsset) return null;
+  if (!asset) return null;
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      <SvgAsset width="100%" height="100%" preserveAspectRatio="none" />
+      <SvgAssetView asset={asset} preserveAspectRatio="none" />
     </View>
   );
 });

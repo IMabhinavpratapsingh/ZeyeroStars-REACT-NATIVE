@@ -1,7 +1,6 @@
 import React, { type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BOTTOM_NAV_PX } from '../../../shared/constants/layout';
 
 /**
@@ -39,10 +38,20 @@ interface RoomInputOverlayProps {
 
 const RoomInputOverlay = ({ show, zIndex, children }: RoomInputOverlayProps) => {
   const keyboard = useAnimatedKeyboard();
-  const insets = useSafeAreaInsets();
 
   const animatedStyle = useAnimatedStyle(() => ({
-    bottom: Math.max(BOTTOM_NAV_PX + insets.bottom, keyboard.height.value),
+    // FIX (asli root cause): RoomChatWindow khud PARENT (RoomsOverlayScreen
+    // -> PersistentSlide) ke andar hai jo pehle se hi `bottom: BOTTOM_NAV_PX`
+    // par khatam ho jaata hai (taaki neeche BottomNav dikhta rahe - dekho
+    // ScreenTransition.tsx ka comment). Yani is component ka apna "bottom:0"
+    // matlab hi "BottomNav ke top" hai. Yahan phir se BOTTOM_NAV_PX jodna
+    // DOUBLE-COUNT tha (InboxModal.tsx mein bilkul yahi bug pehle fix ho
+    // chuka hai, comment dekho) - isi wajah se input BottomNav se bohot
+    // upar, khaali gap ke saath dikh raha tha.
+    // Idle mein ab bas 0 (parent ki bounded height poori fill) - keyboard
+    // khulne par sirf utna hi upar uthao jitna keyboard is (pehle se
+    // BOTTOM_NAV_PX upar shift) container ke andar ghus raha hai.
+    bottom: Math.max(0, keyboard.height.value - BOTTOM_NAV_PX),
   }));
 
   if (!show) return null;

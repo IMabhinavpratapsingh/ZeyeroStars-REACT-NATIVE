@@ -10,9 +10,12 @@ import React, {
 } from 'react';
 import { LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import axios from 'axios';
+import { Image } from 'expo-image';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
+  type SharedValue,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -26,10 +29,12 @@ import useItemsCatalog from '../../../shared/hooks/useItemsCatalog';
 import { getEquippedByCategory } from '../../../shared/utils/profileHelpers';
 import { FIELD } from '../../../shared/utils/profileFields';
 import { getMyId } from '../../../shared/utils/auth';
-import networkManager from '../../../shared/services/NetworkManager';
+import networkManager, { getToken } from '../../../shared/services/NetworkManager';
+import { API_BASE } from '../../../shared/config/config';
 import PlayerPreviewModal from './PlayerPreviewModal';
 import {
   ROOM_MAIN_GATE_POS,
+  applyMemberProfileUpdate,
   getMemberProfilePatch,
   subscribeMemberProfileUpdates,
   subscribeReaction,
@@ -82,7 +87,6 @@ const MOVE_THROTTLE_MS = 150;
 
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 6;
-const ZOOM_BUTTON_STEP = 0.35;
 
 const LONG_PRESS_MS = 450;
 const DOUBLE_TAP_MAX_DELAY_MS = 300;
@@ -226,8 +230,34 @@ const MemberAvatarCard = memo(function MemberAvatarCard({
         </Pressable>
       </View>
 
-      {rm.bubbleContent && (
-        <View style={styles.bubbleAnchor} pointerEvents="none">
+    </View>
+  );
+});
+
+// ---------------------------------------------------------------------
+// Chat/typing bubble - MemberAvatarCard ke ANDAR nahi, ek ALAG global
+// layer (web MemberBubble jaisa, zIndex 9999) taaki har member ka bubble
+// hamesha sab avatars ke upar rahe. Card jaisa hi fixed-size box
+// (cardBox) use hota hai taaki "bottom: 70%" avatar ke sar ke bilkul
+// upar resolve ho. Zoom ke against 1/zoom counter-scale (web jaisa) -
+// bubble ka screen size constant rehta hai.
+// ---------------------------------------------------------------------
+
+const MemberBubble = memo(function MemberBubble({
+  rm, zoom,
+}: { rm: RenderMember; zoom: SharedValue<number> }) {
+  const counterScale = useAnimatedStyle(() => ({
+    transform: [{ scale: 1 / zoom.value }],
+  }));
+  if (!rm.bubbleContent) return null;
+
+  return (
+    <View
+      style={[styles.bubbleWrap, { left: rm.leftPx, top: rm.topPx }]}
+      pointerEvents="none"
+    >
+      <View style={styles.cardBox} pointerEvents="none">
+        <Animated.View style={[styles.bubbleAnchor, counterScale]}>
           {rm.bubbleContent.kind === 'typing' ? (
             <View style={styles.typingBubble}>
               <View style={styles.typingDot} />
@@ -244,8 +274,8 @@ const MemberAvatarCard = memo(function MemberAvatarCard({
               </View>
             ))
           )}
-        </View>
-      )}
+        </Animated.View>
+      </View>
     </View>
   );
 });
@@ -295,7 +325,7 @@ const RoomFloorView = forwardRef<RoomFloorViewHandle, RoomFloorViewProps>(functi
     setContainerSize({ width, height });
   }, []);
 
-  const [, forceRender] = useState(0);
+  const [renderTick, forceRender] = useState(0);
   useEffect(() => subscribeMemberProfileUpdates(() => forceRender((n) => n + 1)), []);
 
   const [localSelfPos, setLocalSelfPos] = useState<{ x: number; y: number } | null>(null);
@@ -370,6 +400,35 @@ const RoomFloorView = forwardRef<RoomFloorViewHandle, RoomFloorViewProps>(functi
     cameraX.value = 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room?.id]);
+
+  // Members badalte hi HAR current member ka profile fresh fetch karo
+  // (web RoomFloorView.jsx wala effect) - yahi avatar_url/avatar_version/
+  // equipped_items/power/verified/elite ka source hai. Iske bina profile
+  // hamesha {} rehta hai aur pfp/cosmetics kabhi nahi aate.
+  useEffect(() => {
+    const ids = (members || []).map((m: any) => m.user_id).filter(Boolean);
+    if (ids.length === 0) return;
+    let cancelled = false;
+    const token = getToken();
+    const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+    Promise.all(
+      ids.map((id: any) =>
+        axios
+          .get(`${API_BASE}/profile/${id}`, config)
+          .then((res) => {
+            if (!cancelled) applyMemberProfileUpdate(id, res.data || {});
+          })
+          .catch((err) => {
+            console.error('Room floor profile fetch error:', id, err?.response?.data || err?.message);
+          })
+      )
+    ).then(() => {
+      if (!cancelled) forceRender((n) => n + 1);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [members]);
 
   const myPos = (String(myId) && positions[String(myId)]) || null;
   useEffect(() => {
@@ -476,16 +535,6 @@ const RoomFloorView = forwardRef<RoomFloorViewHandle, RoomFloorViewProps>(functi
     transform: [{ translateX: cameraX.value }, { translateY: cameraY.value }],
   }));
 
-  const handleZoomStep = useCallback(
-    (dir: 1 | -1) => {
-      const nz = clamp(zoom.value + dir * ZOOM_BUTTON_STEP, MIN_ZOOM, MAX_ZOOM);
-      zoom.value = withTiming(nz, { duration: 150 });
-      cameraX.value = withTiming(clampCameraX(cameraX.value, nz), { duration: 150 });
-      cameraY.value = withTiming(clampCameraY(cameraY.value, nz), { duration: 150 });
-    },
-    [clampCameraX, clampCameraY]
-  );
-
   // ---- Members -> render list ----
   const typingSet = useMemo(() => new Set((typingUserIds || []).map(String)), [typingUserIds]);
 
@@ -527,7 +576,7 @@ const RoomFloorView = forwardRef<RoomFloorViewHandle, RoomFloorViewProps>(functi
           bubbleContent,
         };
       }),
-    [members, positions, localSelfPos, bubbles, typingSet, itemsById, roomXToPx, roomYToPx, myId, resolvePos]
+    [members, positions, localSelfPos, bubbles, typingSet, itemsById, roomXToPx, roomYToPx, myId, resolvePos, renderTick]
   );
 
   // ---- Long-press preview ----
@@ -595,7 +644,7 @@ const RoomFloorView = forwardRef<RoomFloorViewHandle, RoomFloorViewProps>(functi
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room?.id, findScenePos]);
 
-  const floorBgStyle = room?.room_bg_url ? { backgroundColor: '#1a2440' } : ROOM_FLOOR_BG;
+  const floorBgStyle = ROOM_FLOOR_BG;
 
   if (!containerSize.width) {
     return <View style={styles.container} onLayout={onLayout} />;
@@ -607,9 +656,21 @@ const RoomFloorView = forwardRef<RoomFloorViewHandle, RoomFloorViewProps>(functi
         <GestureDetector gesture={composedGesture}>
           <Animated.View style={[styles.box, boxStyle]}>
             <Animated.View style={[styles.scene, sceneStyle, floorBgStyle]}>
+              {!!room?.room_bg_url && (
+                <Image
+                  source={{ uri: room.room_bg_url }}
+                  style={StyleSheet.absoluteFill}
+                  contentFit="contain"
+                  cachePolicy="disk"
+                  pointerEvents="none"
+                />
+              )}
               {renderMembers.map((rm) => (
                 <MemberAvatarCard key={rm.uid} rm={rm} onLongPress={handleLongPress} />
               ))}
+              {renderMembers.map((rm) =>
+                rm.bubbleContent ? <MemberBubble key={`bubble-${rm.uid}`} rm={rm} zoom={zoom} /> : null
+              )}
 
               {flyingTips.map((f) => (
                 <FlyingTip
@@ -636,15 +697,6 @@ const RoomFloorView = forwardRef<RoomFloorViewHandle, RoomFloorViewProps>(functi
             </Animated.View>
           </Animated.View>
         </GestureDetector>
-
-        <View style={styles.zoomControls}>
-          <Pressable onPress={() => handleZoomStep(1)} style={styles.zoomBtn}>
-            <Text style={styles.zoomBtnText}>+</Text>
-          </Pressable>
-          <Pressable onPress={() => handleZoomStep(-1)} style={styles.zoomBtn}>
-            <Text style={styles.zoomBtnText}>−</Text>
-          </Pressable>
-        </View>
       </View>
 
       <PlayerPreviewModal
@@ -684,14 +736,16 @@ const styles = StyleSheet.create({
   },
   powerPill: { flexDirection: 'row', alignItems: 'center', gap: 1 },
   powerText: { fontSize: 8, fontWeight: '700', color: '#facc15' },
+  bubbleWrap: { position: 'absolute', zIndex: 9999 },
   bubbleAnchor: {
     position: 'absolute',
-    left: '50%',
+    left: 0,
+    right: 0,
     bottom: `${(1 - AVATAR_HEAD_TOP_FRACTION) * 100}%`,
-    transform: [{ translateX: -60 }],
-    alignItems: 'flex-start',
+    marginBottom: -4,
+    alignItems: 'center',
     gap: 4,
-    maxWidth: 160,
+    transformOrigin: 'bottom center',
   },
   typingBubble: {
     flexDirection: 'row',
@@ -709,12 +763,6 @@ const styles = StyleSheet.create({
   flyLayer: { position: 'absolute', alignItems: 'center', zIndex: 9999 },
   flyTipText: { fontSize: 10, fontWeight: '700', color: '#fde047', marginTop: -2 },
   flyEmoji: { fontSize: 24 },
-  zoomControls: { position: 'absolute', left: 12, bottom: 16, gap: 6 },
-  zoomBtn: {
-    width: 32, height: 32, borderRadius: 16,
-    backgroundColor: 'rgba(23,23,40,0.7)', borderWidth: 1, borderColor: '#3f3f66',
-    alignItems: 'center', justifyContent: 'center',
-  },
   zoomBtnText: { color: '#ffffff', fontSize: 18, fontWeight: '700' },
 });
 

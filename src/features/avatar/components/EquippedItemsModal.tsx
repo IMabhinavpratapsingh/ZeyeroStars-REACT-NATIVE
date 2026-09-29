@@ -6,7 +6,7 @@ import useTopZIndex from '../../../shared/hooks/useTopZIndex';
 import useStableCallback from '../../../shared/hooks/useStableCallback';
 import { FadeIn, CardPop } from '../../../shared/components/motion/ScreenTransition';
 import { getAssetUrl, CATEGORY_LABELS } from '../utils/avatarAssets';
-import { toSvgComponent } from './AvatarLayers';
+import SvgAssetView from './SvgAssetView';
 
 /**
  * show: modal khula hai kya (bool)
@@ -43,9 +43,12 @@ interface EquippedItemsModalProps {
 }
 
 const ItemThumb = memo(({ category, itemsId }: { category: string; itemsId: string | number }) => {
-  const SvgAsset = toSvgComponent(getAssetUrl(category, itemsId));
-  if (!SvgAsset) return <Text style={styles.noPreview}>No preview</Text>;
-  return <SvgAsset width="100%" height="100%" />;
+  return (
+    <SvgAssetView
+      asset={getAssetUrl(category, itemsId)}
+      fallback={<Text style={styles.noPreview}>No preview</Text>}
+    />
+  );
 });
 ItemThumb.displayName = 'ItemThumb';
 

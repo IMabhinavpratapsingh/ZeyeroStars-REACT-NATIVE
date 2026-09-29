@@ -49,6 +49,16 @@ import { listActiveCommunityRooms, listMyCommunities } from '../../communities/s
  * - `AnimatePresence` + `motion.div` -> moti (same API shape).
  * - `no-scrollbar overflow-x-auto` tab-pills -> horizontal FlatList/ScrollView.
  */
+// Last message meri bheji hui hai ya samne wale ki? Backend `last_message_mine`
+// (bool) ya `last_sender_id` de to wahi use hota hai.
+const isMine = (dm: any): boolean => {
+  if (typeof dm?.last_message_mine === 'boolean') return dm.last_message_mine;
+  if (dm?.last_sender_id != null && dm?.target_id != null) {
+    return String(dm.last_sender_id) !== String(dm.target_id);
+  }
+  return false;
+};
+
 const formatInboxTime = (iso?: string | null): string | null => {
   if (!iso) return null;
   const date = new Date(iso);
@@ -167,7 +177,7 @@ const InboxRow = memo(
             {dm.is_elite && <EliteBadge size="md" />}
           </View>
           <Text style={[styles.lastMessage, hasUnread && styles.lastMessageUnread]} numberOfLines={1}>
-            {dm.last_message_mine && <Text style={styles.youPrefix}>You: </Text>}
+            {isMine(dm) && <Text style={styles.youPrefix}>Me: </Text>}
             {dm.last_message}
           </Text>
         </View>
@@ -873,7 +883,7 @@ const styles = StyleSheet.create({
   metaRow: { flexDirection: 'row', alignItems: 'center' },
   lastMessage: { fontSize: 14, color: '#9a9a9a' },
   lastMessageUnread: { color: '#f5f5f5', fontWeight: '600' },
-  youPrefix: { color: '#6e6e6e' },
+  youPrefix: { color: '#a3a3a3', fontWeight: '600' },
   rowTrailing: { alignItems: 'flex-end', gap: 6, flexShrink: 0 },
   timeText: { fontSize: 11, color: '#6e6e6e' },
   trailingIconRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },

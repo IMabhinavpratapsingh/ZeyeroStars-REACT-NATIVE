@@ -178,7 +178,15 @@ export const PopIn = ({ show, children, style }: TransitionProps) => (
 // hai - bilkul wahi technique jo `(tabs)/_layout.tsx` ke tab-switch slide
 // mein already use ho rahi hai (isliye feel bhi wahi consistent-smooth
 // hoga, koi nayi dependency bhi nahi chahiye).
-export const PersistentSlide = ({ show, children, style }: TransitionProps) => {
+// fullBleed: true ho to overlay screen ke bilkul neeche tak jaata hai
+// (BottomNav ke liye jagah nahi chhodta) - DM chat window khulne par use hota
+// hai, jab BottomNav hide hota hai aur neeche sirf input field rehti hai.
+export const PersistentSlide = ({
+  show,
+  children,
+  style,
+  fullBleed = false,
+}: TransitionProps & { fullBleed?: boolean }) => {
   const { width } = useWindowDimensions();
   const zIndex = useTopZIndex(show);
   const translateX = useSharedValue(show ? 0 : width);
@@ -200,7 +208,7 @@ export const PersistentSlide = ({ show, children, style }: TransitionProps) => {
       // BOTTOM_NAV_PX: CommunityListScreen jaisa hi - `bottom: 0` NAHI,
       // taaki BottomNav (jo neeche, is overlay ke peeche render hota hai)
       // hamesha dikhta rahe, Community mein jaisa dikhta hai waisa hi.
-      style={[styles.persistentOverlay, { bottom: BOTTOM_NAV_PX, zIndex, elevation: zIndex }, animatedStyle, style]}
+      style={[styles.persistentOverlay, { bottom: fullBleed ? 0 : BOTTOM_NAV_PX, zIndex, elevation: zIndex }, animatedStyle, style]}
     >
       {children}
     </Animated.View>

@@ -3,7 +3,7 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
-  KeyboardAvoidingView,
+  Keyboard,
   Platform,
   Pressable,
   StyleSheet,
@@ -12,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import useBackButtonHandler from '../../../shared/hooks/useBackButtonHandler';
 import useTopZIndex from '../../../shared/hooks/useTopZIndex';
 import useStableCallback from '../../../shared/hooks/useStableCallback';
@@ -19,9 +20,12 @@ import useLongPress from '../../../shared/hooks/useLongPress';
 import useAvatarImage from '../../avatar/hooks/useAvatarImage';
 import OnlineStatusDot from '../../../shared/components/OnlineStatusDot';
 import LongPressActionSheet, { type ActionSheetItem } from '../../../shared/components/LongPressActionSheet';
+import KebabMenu from '../../../shared/components/KebabMenu';
 import ReportBlockModal from '../../dm/components/ReportBlockModal';
 import confirmAction from '../../../shared/utils/confirmBus';
 import { getMyId } from '../../../shared/utils/auth';
+import { showAlert } from '../../../shared/utils/alertBus';
+import KeyboardComposerOverlay from '../../../shared/components/KeyboardComposerOverlay';
 import { getProfile } from '../../../shared/utils/profileHelpers';
 import { renderWithMentions } from '../../../shared/utils/renderMentions';
 import RankBadge from '../../../shared/components/RankBadge';
@@ -141,6 +145,7 @@ const CommentRow = memo(function CommentRow({
   onDeleteComment,
   onReportComment,
   onReplyComment,
+  onCopyComment,
   onOpenCommunityBySlug,
 }: {
   c: Comment;
@@ -155,6 +160,7 @@ const CommentRow = memo(function CommentRow({
   onDeleteComment: (id: string | number) => void;
   onReportComment: () => void;
   onReplyComment: (targetId: string | number, username?: string) => void;
+  onCopyComment: (text: string) => void;
   onOpenCommunityBySlug?: (slug: string, communityName: string) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -182,6 +188,16 @@ const CommentRow = memo(function CommentRow({
       icon: <Ionicons name="arrow-undo-outline" size={16} color="#f4f4f5" />,
       onClick: () => onReplyComment(replyTargetId, cProfile.username),
     },
+    {
+      label: 'Copy text',
+      icon: <Ionicons name="copy-outline" size={16} color="#f4f4f5" />,
+      onClick: () => onCopyComment(c.content),
+    },
+    {
+      label: 'View profile',
+      icon: <Ionicons name="person-outline" size={16} color="#f4f4f5" />,
+      onClick: () => onOpenProfile?.({ id: c.user_id, username: cProfile.username }),
+    },
     isMyComment
       ? {
           label: 'Delete',
@@ -198,7 +214,7 @@ const CommentRow = memo(function CommentRow({
   ];
 
   return (
-    <View style={[styles.commentRow, isReply && styles.commentRowReply]} {...pressableProps}>
+    <Pressable style={[styles.commentRow, isReply && styles.commentRowReply]} {...pressableProps}>
       <Pressable onPress={() => onOpenProfile?.({ id: c.user_id, username: cProfile.username })}>
         <CommentAvatar
           userId={c.user_id}
@@ -217,6 +233,12 @@ const CommentRow = memo(function CommentRow({
         <Text style={styles.commentContent}>
           {renderWithMentions(c.content, null, onOpenCommunityBySlug)}
         </Text>
+        <View style={styles.commentMetaRow}>
+          {!!formatTime(c.created_at) && <Text style={styles.commentTime}>{formatTime(c.created_at)}</Text>}
+          <Pressable onPress={() => onReplyComment(replyTargetId, cProfile.username)} hitSlop={8}>
+            <Text style={styles.replyLink}>Reply</Text>
+          </Pressable>
+        </View>
         {!isReply && (replyCount || 0) > 0 && (
           <Pressable onPress={onToggleReplies} hitSlop={6}>
             <Text style={styles.viewRepliesText}>
@@ -232,7 +254,7 @@ const CommentRow = memo(function CommentRow({
         onClose={() => setMenuOpen(false)}
         items={menuItems}
       />
-    </View>
+    </Pressable>
   );
 });
 
@@ -264,6 +286,21 @@ const PostDetailModal = ({
   // { id: jis top-level comment ke neeche reply jaayegi, username: kisko reply kar rahe ho }
   const [replyingTo, setReplyingTo] = useState<{ id: string | number; username?: string } | null>(null);
   const inputRef = useRef<TextInput>(null);
+  const listRef = useRef<FlatList<Comment>>(null);
+  const [composerH, setComposerH] = useState(64);
+  // Keyboard khulne par list ke neeche utna extra padding, taaki kam comments
+  // hone par bhi list scroll ho sake aur last comment keyboard ke peeche na chhupe.
+  const [kbH, setKbH] = useState(0);
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const a = Keyboard.addListener(showEvt, (e) => setKbH(e.endCoordinates?.height ?? 0));
+    const b = Keyboard.addListener(hideEvt, () => setKbH(0));
+    return () => {
+      a.remove();
+      b.remove();
+    };
+  }, []);
 
   const [reportState, setReportState] = useState<{ mode: any; target: any } | null>(null);
   const [actionToast, setActionToast] = useState('');
@@ -277,6 +314,15 @@ const PostDetailModal = ({
   const showActionToast = (msg: string) => {
     setActionToast(msg);
     setTimeout(() => setActionToast(''), 3000);
+  };
+
+  const copyText = async (text: string) => {
+    try {
+      await Clipboard.setStringAsync(text || '');
+      showActionToast('Copied');
+    } catch (err) {
+      console.error('Copy error:', err);
+    }
   };
 
   const load = useCallback(async (postId: string | number) => {
@@ -369,21 +415,30 @@ const PostDetailModal = ({
     if (!content || sending) return;
     setSending(true);
     try {
-      const res = await addComment({
-        postId: post.id,
-        content,
-        parentCommentId: replyingTo?.id ?? null,
-      });
-      const newComment: Comment | undefined = res.data.comment;
-      setComments((prev) => (newComment ? [newComment, ...prev] : prev));
-      // Reply hai to usi thread ko khula bhi rakho, taaki naya reply turant dikhe.
-      if (replyingTo) {
-        setOpenReplyThreads((prev) => new Set(prev).add(replyingTo.id));
-      }
+      const parentId = replyingTo?.id ?? null;
+      await addComment({ postId: post.id, content, parentCommentId: parentId });
       setDraft('');
       setReplyingTo(null);
+      if (parentId != null) {
+        setOpenReplyThreads((prev) => new Set(prev).add(parentId));
+      }
+      // Backend POST /feed/comment naya comment return nahi karta (web bhi
+      // isliye refetch karta hai) - comments ascending order mein hain, to
+      // ab tak load hue comments ke baad wala hissa mangwa kar append karo.
+      const res = await getComments(post.id, offsetRef.current, 30);
+      const fresh: Comment[] = res.data.comments || [];
+      setComments((prev) => {
+        const existing = new Set(prev.map((c) => String(c.id)));
+        return [...prev, ...fresh.filter((c) => !existing.has(String(c.id)))];
+      });
+      offsetRef.current += fresh.length;
+      setHasMore(!!res.data.has_more);
+      if (parentId == null) {
+        setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
+      }
     } catch (err: any) {
       console.error('Add comment error:', err.response?.data || err.message);
+      showAlert(err.response?.data?.detail || 'Could not comment, try again.');
     } finally {
       setSending(false);
     }
@@ -427,6 +482,15 @@ const PostDetailModal = ({
   };
 
   const postMenuItems: ActionSheetItem[] = [
+    ...(post.content
+      ? [
+          {
+            label: 'Copy text',
+            icon: <Ionicons name="copy-outline" size={16} color="#f4f4f5" />,
+            onClick: () => copyText(post.content as string),
+          } as ActionSheetItem,
+        ]
+      : []),
     ...(isMyPost
       ? [
           {
@@ -454,7 +518,7 @@ const PostDetailModal = ({
 
   return (
     <View style={[styles.overlay, { zIndex, elevation: 20, paddingTop: topInset }]}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <View style={{ flex: 1 }}>
         {/* Dashboard ka Header (search/notifications/profile) is modal ke
             peeche already dikhta hai - yahan apna alag "Post" title bar
             nahi rakhte (dobara header jaisa dikhta tha), sirf ek chhota
@@ -464,6 +528,8 @@ const PostDetailModal = ({
         </Pressable>
 
         <FlatList
+          ref={listRef}
+          keyboardShouldPersistTaps="handled"
           data={listData}
           keyExtractor={(item) => String(item.id)}
           renderItem={({ item: c }) => {
@@ -488,6 +554,7 @@ const PostDetailModal = ({
                     setReportState({ mode: 'report_comment', target: { id: c.id, label: 'this comment' } })
                   }
                   onReplyComment={(id, username) => setReplyingTo({ id, username })}
+                  onCopyComment={copyText}
                 />
                 {repliesOpen && (
                   <View style={styles.repliesWrap}>
@@ -509,6 +576,7 @@ const PostDetailModal = ({
                             setReportState({ mode: 'report_comment', target: { id: r.id, label: 'this comment' } })
                           }
                           onReplyComment={(id, username) => setReplyingTo({ id, username })}
+                          onCopyComment={copyText}
                         />
                       );
                     })}
@@ -519,9 +587,9 @@ const PostDetailModal = ({
           }}
           onEndReached={loadMore}
           onEndReachedThreshold={0.5}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { paddingBottom: composerH + kbH + 24 }]}
           ListHeaderComponent={
-            <View style={styles.postCard} {...postLongPressProps}>
+            <Pressable style={styles.postCard} {...postLongPressProps}>
               {!!postCommunity && (
                 <Pressable onPress={openPostCommunity} style={styles.communityChipRow} hitSlop={4}>
                   <Ionicons name="people-circle-outline" size={16} color="#a1a1aa" />
@@ -559,6 +627,7 @@ const PostDetailModal = ({
                     )}
                   </View>
                 </View>
+                <KebabMenu items={postMenuItems} size={18} />
               </View>
 
               {!!post.content && (
@@ -599,13 +668,15 @@ const PostDetailModal = ({
               {!loading && comments.length === 0 && (
                 <Text style={styles.emptyText}>No comments yet - say something!</Text>
               )}
-            </View>
+            </Pressable>
           }
           ListFooterComponent={
             loadingMore ? <ActivityIndicator color="#ffffff" style={{ marginVertical: 12 }} /> : null
           }
         />
+      </View>
 
+      <KeyboardComposerOverlay onHeightChange={setComposerH}>
         {!!replyingTo && (
           <View style={styles.replyingBar}>
             <Text style={styles.replyingText}>
@@ -642,7 +713,7 @@ const PostDetailModal = ({
             )}
           </Pressable>
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardComposerOverlay>
 
       {!!actionToast && (
         <View style={styles.toast} pointerEvents="none">
@@ -730,6 +801,9 @@ const styles = StyleSheet.create({
   commentBlock: { paddingVertical: 4 },
   commentRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingVertical: 8 },
   commentRowReply: { marginTop: 2 },
+  commentMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 4 },
+  commentTime: { color: '#71717a', fontSize: 11 },
+  replyLink: { color: '#a1a1aa', fontSize: 12, fontWeight: '700' },
   repliesWrap: {
     marginLeft: 20,
     paddingLeft: 10,

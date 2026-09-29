@@ -17,7 +17,8 @@ import {
 } from '../../dm/services/dmMessagesCache';
 import type { InboxRow, UseInboxStateReturn } from './useInboxState';
 
-const DM_PAGE_SIZE = 20;
+const DM_PAGE_SIZE = 20; // scroll-up (older) pagination
+const DM_INITIAL_SIZE = 10; // chat kholte hi sirf latest 10 messages
 
 // DB se (chat_messages table se) aane wala raw row snake_case mein hota hai
 // (is_tip, tip_amount) - lekin DMChatWindow ka bubble component `msg.isTip`
@@ -141,8 +142,10 @@ export default function useDMState({
       const cached = getCachedMessages(targetId);
 
       if (cached) {
-        setChatMessages(cached.messages);
-        setDmHasMore(cached.hasMore);
+        // Cache me zyada ho to bhi screen par sirf latest DM_INITIAL_SIZE (mount halka rahe).
+        const initial = cached.messages.slice(-DM_INITIAL_SIZE);
+        setChatMessages(initial);
+        setDmHasMore(cached.hasMore || cached.messages.length > initial.length);
         setChatLoading(false);
         markDMSeenAndClearUnread(targetId);
 
@@ -174,7 +177,7 @@ export default function useDMState({
         const token = getToken();
         const res = await axios.get(`${API_BASE}/ws/dm/history/${targetId}`, {
           headers: { Authorization: `Bearer ${token}` },
-          params: { limit: DM_PAGE_SIZE },
+          params: { limit: DM_INITIAL_SIZE },
         });
         const messages = (res.data.messages || []).map(normalizeDMHistoryMessage);
         const hasMore = !!res.data.has_more;

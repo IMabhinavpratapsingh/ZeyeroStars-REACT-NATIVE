@@ -1,16 +1,15 @@
-import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
-  KeyboardAvoidingView,
   Image,
+  Keyboard,
+  KeyboardAvoidingView,
   Platform,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
 } from 'react-native';
 import { MotiView } from 'moti';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,6 +20,7 @@ import EliteBadge from '../../../shared/components/EliteBadge';
 import LongPressActionSheet from '../../../shared/components/LongPressActionSheet';
 import ReportBlockModal from './ReportBlockModal';
 import TradeModal from '../../trade/components/TradeModal';
+import useAvatarImage from '../../avatar/hooks/useAvatarImage';
 import useRankCache from '../../../shared/hooks/useRankCache';
 import useBackButtonHandler from '../../../shared/hooks/useBackButtonHandler';
 import useTopZIndex from '../../../shared/hooks/useTopZIndex';
@@ -149,7 +149,7 @@ const DMMessageBubble = memo(({ msg, mine, onDelete, onEdit, onTip, onReply, onR
               value={editText}
               onChangeText={setEditText}
               style={styles.editInput}
-              placeholderTextColor="#a5b4fc"
+              placeholderTextColor="#737373"
             />
             <View style={styles.editBtns}>
               <Pressable onPress={cancelEdit} style={[styles.editBtn, { backgroundColor: '#262626' }]}>
@@ -167,8 +167,8 @@ const DMMessageBubble = memo(({ msg, mine, onDelete, onEdit, onTip, onReply, onR
             {...pressableProps}
             style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs]}
           >
-            <Text style={styles.bubbleText}>{renderWithMentions(msg.content, null, onOpenCommunity)}</Text>
-            {msg.edited && <Text style={styles.editedText}>edited</Text>}
+            <Text style={[styles.bubbleText, mine && styles.bubbleTextMine]}>{renderWithMentions(msg.content, null, onOpenCommunity)}</Text>
+            {msg.edited && <Text style={[styles.editedText, mine && styles.editedTextMine]}>edited</Text>}
 
             {mine && (
               <View style={styles.statusIcon}>
@@ -272,10 +272,9 @@ const DMChatWindow = ({
   const zIndex = useTopZIndex(selectedDM);
   const insets = useSafeAreaInsets();
   const listRef = useRef<FlatList>(null);
-  const prevFirstKeyRef = useRef<string | null>(null);
-  const prevLastKeyRef = useRef<string | null>(null);
-  const initialScrolledRef = useRef(false);
-
+  const userScrolledRef = useRef(false);
+  const contentHRef = useRef(0);
+  const layoutHRef = useRef(0);
   const [tradePanelExpanded, setTradePanelExpanded] = useState(true);
   const [reportState, setReportState] = useState<{ mode: any; target: any } | null>(null);
   const [actionToast, setActionToast] = useState('');
@@ -288,6 +287,27 @@ const DMChatWindow = ({
   const dmTypingSentRef = useRef(false);
 
   const dmTargetId = selectedDM?.id || selectedDM?.target_id;
+  // Inbox wale avatar_url/avatar_version se SYNC resolve (cache) - header me pehle
+  // letter/default dikh ke baad me image nahi badlegi.
+  const headerAvatarSrc = useAvatarImage(dmTargetId, selectedDM?.avatar_url, selectedDM?.avatar_version);
+
+  // Default behaviour: keyboard khulne par poori screen upar push hoti hai
+  // (KeyboardAvoidingView). Keyboard khula ho to bottom safe-area padding
+  // ki zaroorat nahi, isliye kbOpen track karte hain.
+  const [kbOpen, setKbOpen] = useState(false);
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const a = Keyboard.addListener(showEvt, () => {
+      setKbOpen(true);
+      requestAnimationFrame(() => listRef.current?.scrollToOffset({ offset: 0, animated: true }));
+    });
+    const b = Keyboard.addListener(hideEvt, () => setKbOpen(false));
+    return () => {
+      a.remove();
+      b.remove();
+    };
+  }, []);
 
   const handleClose = useStableCallback(() => onClose?.());
   useBackButtonHandler(!!selectedDM, handleClose);
@@ -301,15 +321,12 @@ const DMChatWindow = ({
   // Conversation badalne par input reset (ya User Store se aaya draft dikhao).
   useEffect(() => {
     setMsgInput(initialDraft || '');
+    userScrolledRef.current = false;
     dmTypingSentRef.current = false;
     if (dmTypingTimeoutRef.current) {
       clearTimeout(dmTypingTimeoutRef.current);
       dmTypingTimeoutRef.current = null;
     }
-    // Naye DM me list dobara "initial load" ki tarah behave kare.
-    initialScrolledRef.current = false;
-    prevFirstKeyRef.current = null;
-    prevLastKeyRef.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dmTargetId]);
 
@@ -354,37 +371,25 @@ const DMChatWindow = ({
     setMsgInput((prev) => `${prev}@${username} `);
   }, []);
 
-  // Scroll behaviour: initial -> bottom (no anim), append -> bottom (anim),
-  // prepend (older loaded) -> maintainVisibleContentPosition sambhalta hai.
-  const msgKey = (m: any, i: number) => String(m?.id ?? `tmp-${i}`);
+  // INVERTED list: newest message index 0 pe hota hai, aur list hamesha
+  // bottom (latest) se hi shuru hoti hai - koi scrollToEnd/timing hack nahi.
+  // Purane messages load hone par (end of list) position apne aap barkarar rehti hai.
+  const invertedData = useMemo(() => [...chatMessages].reverse(), [chatMessages]);
+  const msgKey = (m: any, i: number) => String(m?.id ?? `tmp-${chatMessages.length - 1 - i}`);
+
+  // Naya message (mera ya samne wale ka) aaye to latest tak le jao.
+  const lastMsgKey = chatMessages.length ? String(chatMessages[chatMessages.length - 1]?.id ?? `tmp-${chatMessages.length - 1}`) : null;
   useEffect(() => {
-    const len = chatMessages.length;
-    if (len === 0) {
-      prevFirstKeyRef.current = null;
-      prevLastKeyRef.current = null;
-      return;
-    }
-    const firstKey = msgKey(chatMessages[0], 0);
-    const lastKey = msgKey(chatMessages[len - 1], len - 1);
-    const prevFirst = prevFirstKeyRef.current;
-    const prevLast = prevLastKeyRef.current;
-    prevFirstKeyRef.current = firstKey;
-    prevLastKeyRef.current = lastKey;
+    if (!lastMsgKey) return;
+    requestAnimationFrame(() => listRef.current?.scrollToOffset({ offset: 0, animated: true }));
+  }, [lastMsgKey]);
 
-    if (!initialScrolledRef.current) {
-      initialScrolledRef.current = true;
-      requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: false }));
-      return;
-    }
-    const prepended = prevFirst !== null && prevFirst !== firstKey && prevLast === lastKey;
-    if (!prepended) {
-      requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
-    }
-  }, [chatMessages]);
-
-  const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+  const handleEndReached = () => {
     if (!hasMoreMessages || loadingMore) return;
-    if (e.nativeEvent.contentOffset.y < 60) onLoadMore?.();
+    // Start me sirf latest 10: user ne khud upar scroll kiya ho tab hi purane load karo
+    // (ya agar 10 messages screen bhar hi na paayein).
+    if (!userScrolledRef.current && contentHRef.current >= layoutHRef.current) return;
+    onLoadMore?.();
   };
 
   useEffect(() => {
@@ -401,7 +406,7 @@ const DMChatWindow = ({
 
   const headerVerified = selectedDM.is_verified ?? verifieds[dmTargetId];
   const headerElite = selectedDM.is_elite ?? elites[dmTargetId];
-  const headerAvatar = avatars[dmTargetId]?.photoUrl;
+  const headerAvatar = headerAvatarSrc || avatars[dmTargetId]?.photoUrl;
 
   const tradeForThisDM = activeTrade && String(activeTrade.otherId) === String(dmTargetId) ? activeTrade : null;
   const waitingForThisDM =
@@ -434,13 +439,10 @@ const DMChatWindow = ({
   };
 
   return (
-    <MotiView
-      from={{ opacity: 0, translateX: 24 }}
-      animate={{ opacity: 1, translateX: 0 }}
-      transition={{ type: 'timing', duration: 200 }}
-      style={[styles.screen, { zIndex, elevation: 20 }]}
-    >
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    // Slide/animation ab parent (DMOverlayScreen -> ChatSlide) karta hai -
+    // yahan koi fade/translate nahi, warna blink hota hai.
+    <View style={[styles.screen, { zIndex, elevation: 20 }]}>
+      <KeyboardAvoidingView style={styles.flex} behavior="padding">
         {/* Header */}
         <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
           <Pressable onPress={onClose} style={styles.closeBtn} hitSlop={8}>
@@ -515,16 +517,28 @@ const DMChatWindow = ({
         ) : (
           <FlatList
             ref={listRef}
-            data={chatMessages}
+            data={invertedData}
+            inverted
             keyExtractor={msgKey}
             renderItem={renderItem}
-            onScroll={handleScroll}
-            scrollEventThrottle={64}
+            onEndReached={handleEndReached}
+            onScrollBeginDrag={() => {
+              userScrolledRef.current = true;
+            }}
+            onContentSizeChange={(_w, h) => {
+              contentHRef.current = h;
+            }}
+            onLayout={(e) => {
+              layoutHRef.current = e.nativeEvent.layout.height;
+            }}
+            initialNumToRender={10}
+            maxToRenderPerBatch={8}
+            windowSize={7}
+            onEndReachedThreshold={0.3}
             keyboardShouldPersistTaps="handled"
-            maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
             contentContainerStyle={styles.listContent}
             style={styles.flex}
-            ListHeaderComponent={
+            ListFooterComponent={
               loadingMore ? (
                 <View style={styles.loadMoreWrap}>
                   <View style={styles.loadMorePill}>
@@ -554,7 +568,7 @@ const DMChatWindow = ({
         )}
 
         {/* Input area */}
-        <View style={[styles.inputRow, { paddingBottom: insets.bottom + 16 }]}>
+        <View style={[styles.inputRow, { paddingBottom: kbOpen ? 10 : insets.bottom + 12 }]}>
           {requestLock === 'pending_incoming' ? (
             <View style={styles.reqRow}>
               <Text style={styles.reqText}>{selectedDM.username} sent you a message request.</Text>
@@ -609,7 +623,7 @@ const DMChatWindow = ({
           onDone={() => showActionToast('Report submitted, thank you.')}
         />
       </KeyboardAvoidingView>
-    </MotiView>
+    </View>
   );
 };
 
@@ -684,32 +698,34 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   tipText: { fontSize: 11, color: '#fde047' },
-  msgCol: { maxWidth: '100%' },
+  msgCol: { flexShrink: 1, maxWidth: '100%' },
   alignEnd: { alignItems: 'flex-end' },
   alignStart: { alignItems: 'flex-start' },
-  bubble: { padding: 12, borderRadius: 16, maxWidth: '75%' },
-  bubbleMine: { backgroundColor: '#4f46e5', borderBottomRightRadius: 2, paddingBottom: 20, paddingRight: 56 },
+  bubble: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, flexShrink: 1 },
+  bubbleMine: { backgroundColor: '#e5e5e5', borderBottomRightRadius: 2, paddingBottom: 20, paddingRight: 56 },
   bubbleTheirs: { backgroundColor: '#262626', borderBottomLeftRadius: 2 },
-  bubbleText: { color: '#ffffff', fontSize: 14 },
+  bubbleText: { color: '#ffffff', fontSize: 14, lineHeight: 19, flexShrink: 1 },
+  bubbleTextMine: { color: '#000000' },
+  editedTextMine: { color: 'rgba(0,0,0,0.55)' },
   editedText: { fontSize: 10, color: 'rgba(255,255,255,0.6)', fontStyle: 'italic', marginTop: 2 },
   statusIcon: { position: 'absolute', bottom: 4, right: 10, flexDirection: 'row', alignItems: 'center' },
   timeText: { fontSize: 10, color: '#6e6e6e', marginTop: 2, paddingHorizontal: 4 },
   editWrap: { width: '75%', gap: 6 },
   editInput: {
-    backgroundColor: '#4338ca',
-    color: '#ffffff',
+    backgroundColor: '#e5e5e5',
+    color: '#000000',
     fontSize: 14,
     padding: 12,
     borderRadius: 16,
     minHeight: 56,
     textAlignVertical: 'top',
     borderWidth: 2,
-    borderColor: '#818cf8',
+    borderColor: '#a3a3a3',
   },
   editBtns: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8 },
   editBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
   editBtnText: { color: '#ffffff', fontSize: 12, fontWeight: '700' },
-  inputRow: { padding: 16, flexDirection: 'row', gap: 8 },
+  inputRow: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 12, flexDirection: 'row', gap: 8, alignItems: 'center' },
   input: {
     flex: 1,
     backgroundColor: '#0a0a0a',

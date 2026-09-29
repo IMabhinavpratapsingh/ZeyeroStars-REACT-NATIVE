@@ -1,6 +1,7 @@
 import React, { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { AnimatePresence, MotiView } from 'moti';
+import { Easing } from 'react-native-reanimated';
 
 /**
  * Generic full-screen loading overlay - room/battle (ya kahin bhi) mein
@@ -46,7 +47,7 @@ const LoadingOverlay = ({ show, text = 'Loading...', zIndex = 200 }: LoadingOver
               duration: 1300,
               loop: true,
               repeatReverse: true,
-              easing: (t) => t, // easeInOut ke qareeb, Moti built-in easing curve
+              easing: Easing.linear, // plain JS fn worklet nahi hoti (Reanimated error) - isliye Easing.linear
             }}
             style={styles.badge}
           >

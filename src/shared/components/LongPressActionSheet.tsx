@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AnimatePresence, MotiView } from 'moti';
+import { Easing } from 'react-native-reanimated';
 
 const MARGIN = 10; // screen edge se minimum gap
 const GAP = 8; // anchor point se menu ke beech gap
@@ -115,7 +116,7 @@ const LongPressActionSheet = ({ open, title, items = [], onClose, anchor }: Long
               from={anchored ? { opacity: 0, scale: 0.9 } : { translateY: 600 }}
               animate={anchored ? { opacity: 1, scale: 1 } : { translateY: 0 }}
               exit={anchored ? { opacity: 0, scale: 0.9 } : { translateY: 600 }}
-              transition={{ type: 'spring', damping: anchored ? 28 : 32, stiffness: anchored ? 380 : 320 }}
+              transition={{ type: 'timing', duration: 240, easing: Easing.out(Easing.cubic) }}
               onLayout={(e: { nativeEvent: { layout: { width: any; height: any; }; }; }) => {
                 if (anchored && !measuredSize) {
                   const { width, height } = e.nativeEvent.layout;

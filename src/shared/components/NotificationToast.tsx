@@ -5,6 +5,7 @@ import { FullWindowOverlay } from 'react-native-screens';
 import { AnimatePresence, MotiView } from 'moti';
 import useAvatarImage from '../../features/avatar/hooks/useAvatarImage';
 import type { InAppNotification } from '../hooks/useNotification';
+import { Easing } from 'react-native-reanimated';
 
 /**
  * In-app message toast (top se slide-in). `useNotification()` ka `notif`
@@ -46,7 +47,7 @@ const NotificationToast = ({ notif, onClick }: NotificationToastProps) => {
             from={{ translateY: -30, opacity: 0 }}
             animate={{ translateY: 0, opacity: 1 }}
             exit={{ translateY: -20, opacity: 0 }}
-            transition={{ type: 'spring', damping: 18, stiffness: 240 }}
+            transition={{ type: 'timing', duration: 240, easing: Easing.out(Easing.cubic) }}
             style={styles.wrap}
           >
             <Pressable onPress={onClick} style={styles.card}>

@@ -11,6 +11,7 @@ import useTopZIndex from '../../../shared/hooks/useTopZIndex';
 import useStableCallback from '../../../shared/hooks/useStableCallback';
 import { calculateZMoneyCost, isValidZMoneyAmount } from '../../../shared/utils/zmoney';
 import TradeItemPicker from './TradeItemPicker';
+import { Easing } from 'react-native-reanimated';
 
 /**
  * trade: {
@@ -261,7 +262,7 @@ const TradeModal = ({ trade, myBalance, onUpdateOffer, onConfirm, onCancel, embe
       <MotiView
         from={{ opacity: 0, translateY: -8 }}
         animate={{ opacity: 1, translateY: 0 }}
-        transition={{ type: 'spring', stiffness: 340, damping: 32 }}
+        transition={{ type: 'timing', duration: 240, easing: Easing.out(Easing.cubic) }}
         style={styles.embeddedCard}
       >
         <View style={styles.embeddedHead}>

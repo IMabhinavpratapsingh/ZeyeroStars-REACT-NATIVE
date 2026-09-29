@@ -481,7 +481,13 @@ export default function TabsLayout() {
 
       <RoomsOverlayScreen show={showRooms} onClose={closeRooms} />
 
-      <DMOverlayScreen show={showDM} onClose={closeDM} />
+      <DMOverlayScreen
+        show={showDM}
+        onClose={closeDM}
+        onOpenOverlay={openDM}
+        myBalance={balance}
+        onBalanceMerge={(nb) => setBalance((prev) => ({ ...prev, ...nb }))}
+      />
 
       <CommunityListScreen
         show={community.showCommunities}

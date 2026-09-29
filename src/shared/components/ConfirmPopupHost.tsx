@@ -3,6 +3,7 @@ import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { MotiView } from 'moti';
 import { Ionicons } from '@expo/vector-icons';
 import { subscribeConfirm, type ConfirmRequest } from '../utils/confirmBus';
+import { Easing } from 'react-native-reanimated';
 
 /**
  * Styled Yes/No dialog (window.confirm ki jagah). Root _layout.tsx mein EK
@@ -65,7 +66,7 @@ const ConfirmPopupHost = () => {
           <MotiView
             from={{ scale: 0.92, opacity: 0 }}
             animate={{ scale: visible ? 1 : 0.95, opacity: visible ? 1 : 0 }}
-            transition={{ type: 'spring', damping: 18, stiffness: 240 }}
+            transition={{ type: 'timing', duration: 240, easing: Easing.out(Easing.cubic) }}
             style={styles.dialog}
           >
             <View style={styles.header}>

@@ -5,6 +5,7 @@ import { FullWindowOverlay } from 'react-native-screens';
 import { AnimatePresence, MotiView } from 'moti';
 import { Ionicons } from '@expo/vector-icons';
 import { subscribeAlert, type AlertPopup, type AlertType } from '../utils/alertBus';
+import { Easing } from 'react-native-reanimated';
 
 const AUTO_DISMISS_MS = 4500;
 const MAX_AUTO_DISMISS_MS = 12000;
@@ -74,7 +75,7 @@ const AlertPopupHost = () => {
               from={{ translateY: -30, opacity: 0 }}
               animate={{ translateY: 0, opacity: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ type: 'spring', damping: 18, stiffness: 240 }}
+              transition={{ type: 'timing', duration: 240, easing: Easing.out(Easing.cubic) }}
               style={styles.cardWrap}
             >
               <Pressable

@@ -135,7 +135,22 @@ export default function useRoomState({
 
   const openRoom = useCallback(
     async (room: ActiveRoom) => {
-      if (!room?.id || !networkManager.isConnected()) return;
+      if (!room?.id) return;
+
+      // Socket abhi connect ho raha ho sakta hai (app abhi khuli ho, ya
+      // background se wapas aayi ho) - pehle silently isConnected() check
+      // karke turant return karne se tap kaam hi nahi karta tha (jaisa
+      // toggleMatchmaking mein bhi hai, waisa hi connect hone ka wait +
+      // user ko feedback).
+      if (!networkManager.isConnected()) {
+        beginScreenLoading('Connecting...');
+        const ok = await networkManager.waitForConnection(4000);
+        if (!ok) {
+          endScreenLoading();
+          showAlert('No connection, please try again.');
+          return;
+        }
+      }
 
       // Already isi room mein hain - bas screen wapas dikha do (Highrise
       // jaisa: room ek baar join hone ke baad kahin bhi ghoomo, "Rooms"
@@ -191,7 +206,7 @@ export default function useRoomState({
 
       setShowRoomsModal(false);
     },
-    [beginScreenLoading, isPrivileged]
+    [beginScreenLoading, endScreenLoading, isPrivileged]
   );
 
   /** Room ki SCREEN band karo - membership barkarar rehti hai. */

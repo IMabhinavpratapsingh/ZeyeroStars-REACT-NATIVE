@@ -1,14 +1,14 @@
 {
   "expo": {
-    "name": "ZSF",
+    "name": "Zeyerostars",
     "slug": "ZSF",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./src/assets/zeyerostars.svg",
     "scheme": "zsf",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./src/assets/zeyerostars.svg"
     },
     "android": {
       "package": "com.zeyerostars.app",

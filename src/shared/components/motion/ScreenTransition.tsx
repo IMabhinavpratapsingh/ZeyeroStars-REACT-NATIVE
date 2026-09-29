@@ -69,7 +69,7 @@ export const CardPop = React.forwardRef<React.ElementRef<typeof MotiView>, CardP
       from={{ translateY: 24, opacity: 0, scale: 0.98 }}
       animate={{ translateY: 0, opacity: 1, scale: 1 }}
       exit={{ translateY: 16, opacity: 0, scale: 0.98 }}
-      transition={{ type: 'spring', stiffness: 340, damping: 32 }}
+      transition={{ type: 'timing', duration: 240, easing: Easing.out(Easing.cubic) }}
       style={style}
     >
       {children}
@@ -85,7 +85,7 @@ export const SlideUp = ({ show, children, style }: TransitionProps) => (
         from={{ translateY: 600 }}
         animate={{ translateY: 0 }}
         exit={{ translateY: 600 }}
-        transition={{ type: 'spring', stiffness: 320, damping: 34 }}
+        transition={{ type: 'timing', duration: 240, easing: Easing.out(Easing.cubic) }}
         style={style}
       >
         {children}
@@ -108,7 +108,7 @@ export const SlideInRight = ({ show, children, style, bouncy = true }: Transitio
         exit={{ translateX: 400 }}
         transition={
           bouncy
-            ? { type: 'spring', stiffness: 320, damping: 34 }
+            ? { type: 'timing', duration: 240, easing: Easing.out(Easing.cubic) }
             : { type: 'timing', duration: 240, easing: Easing.out(Easing.cubic) }
         }
         style={style}
@@ -133,7 +133,7 @@ export const ExpandFromTop = ({ show, children, style }: TransitionProps) => (
         from={{ opacity: 0, scale: 0.94, translateY: -10 }}
         animate={{ opacity: 1, scale: 1, translateY: 0 }}
         exit={{ opacity: 0, scale: 0.94, translateY: -10 }}
-        transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+        transition={{ type: 'timing', duration: 240, easing: Easing.out(Easing.cubic) }}
         style={[{ transformOrigin: 'top center' } as ViewStyle, style]}
       >
         {children}
@@ -149,7 +149,7 @@ export const PopIn = ({ show, children, style }: TransitionProps) => (
         from={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.9 }}
-        transition={{ type: 'spring', stiffness: 380, damping: 28 }}
+        transition={{ type: 'timing', duration: 240, easing: Easing.out(Easing.cubic) }}
         style={style}
       >
         {children}

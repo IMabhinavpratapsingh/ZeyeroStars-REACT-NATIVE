@@ -7,6 +7,7 @@ import {
   setDontShowRulesWarningAgain,
   type RulesWarningRequest,
 } from '../utils/rulesWarningBus';
+import { Easing } from 'react-native-reanimated';
 
 /**
  * Room join, World Chat join, Community join, ya Community Room join -
@@ -80,7 +81,7 @@ const RulesWarningHost = () => {
         <MotiView
           from={{ translateY: 24, opacity: 0, scale: 0.97 }}
           animate={{ translateY: visible ? 0 : 12, opacity: visible ? 1 : 0, scale: visible ? 1 : 0.98 }}
-          transition={{ type: 'spring', damping: 20, stiffness: 240 }}
+          transition={{ type: 'timing', duration: 240, easing: Easing.out(Easing.cubic) }}
           style={styles.card}
         >
           <View style={styles.header}>

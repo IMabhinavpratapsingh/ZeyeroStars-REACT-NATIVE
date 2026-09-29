@@ -11,6 +11,8 @@ import useBackButtonHandler from '../../../shared/hooks/useBackButtonHandler';
 import { PersistentSlide } from '../../../shared/components/motion/ScreenTransition';
 import useInboxState from '../../dashboard/hooks/useInboxState';
 import useDMState from '../../dashboard/hooks/useDMState';
+import useTradeState from '../../dashboard/hooks/useTradeState';
+import TradeRequestModal from '../../trade/components/TradeRequestModal';
 import InboxModal from './InboxModal';
 import DMChatWindow from './DMChatWindow';
 import { setFullscreenOverlayOpen } from '../../../shared/utils/fullscreenOverlayBus';
@@ -30,8 +32,8 @@ import { setFullscreenOverlayOpen } from '../../../shared/utils/fullscreenOverla
 // pehle se BEHTAR hai (route-based Tabs bhi mounted rakhta tha, lekin ab
 // route/pathname involve hi nahi hota).
 //
-// SCOPE NOTE (jaisa pehle dm.tsx mein tha): tip-in-chat abhi "coming soon"
-// hai, trade-in-chat bhi abhi wire nahi hai.
+// SCOPE NOTE: tip-in-chat abhi "coming soon" hai. Trade-in-chat ab wired hai
+// (useTradeState + DMChatWindow ka Trade button).
 // Chat ke liye PersistentSlide jaisi hi slide (same duration/easing, bina bounce).
 // Inbox neeche hamesha mounted rehta hai, chat uske upar slide hoti hai.
 const SLIDE_MS = 260;
@@ -59,9 +61,15 @@ const ChatSlide = ({ visible, children }: { visible: boolean; children: ReactNod
 interface DMOverlayScreenProps {
   show: boolean;
   onClose: () => void;
+  /** Incoming trade request accept hone par DM overlay khud khulna chahiye (kahin se bhi) */
+  onOpenOverlay?: () => void;
+  /** Header/Profile ka balance - trade Z Money check ke liye */
+  myBalance?: { coins?: number; z_money?: number } | null;
+  /** trade_completed ka new_balance parent ke balance mein merge karne ke liye */
+  onBalanceMerge?: (newBalance: { coins?: number; z_money?: number }) => void;
 }
 
-export default function DMOverlayScreen({ show, onClose }: DMOverlayScreenProps) {
+export default function DMOverlayScreen({ show, onClose, onOpenOverlay, myBalance, onBalanceMerge }: DMOverlayScreenProps) {
   useBackButtonHandler(show, onClose);
 
   const [showInbox, setShowInbox] = useState(true);
@@ -83,7 +91,15 @@ export default function DMOverlayScreen({ show, onClose }: DMOverlayScreenProps)
     isInboxOpen: () => showInbox,
   });
 
-  useWebSocket(dm.wsHandlers);
+  // Trade (DM header ke Trade button se) - web Dashboard ka trade state ab yahan.
+  // Incoming request accept -> DM overlay khulta hai + us user ki chat select hoti hai.
+  const openChatForTradeRef = useRef<(u: { id: string | number; username?: string }) => void>(() => {});
+  const trade = useTradeState({
+    onOpenChat: (u) => openChatForTradeRef.current(u),
+    onBalanceMerge,
+  });
+
+  useWebSocket({ ...dm.wsHandlers, ...trade.wsHandlers });
 
   useEffect(() => {
     inbox.fetchInbox();
@@ -145,6 +161,11 @@ export default function DMOverlayScreen({ show, onClose }: DMOverlayScreenProps)
     dmRef.current.openChat(row);
   }, []);
 
+  openChatForTradeRef.current = (u) => {
+    onOpenOverlay?.();
+    handleSelectDM(u);
+  };
+
   const handleCloseChat = useCallback(() => {
     Keyboard.dismiss();
     dmRef.current.closeChat();
@@ -202,9 +223,25 @@ export default function DMOverlayScreen({ show, onClose }: DMOverlayScreenProps)
             onDeleteMessage={handleDeleteMsg}
             onEditMessage={handleEditMsg}
             onTip={handleTip}
+            activeTrade={trade.activeTrade}
+            outgoingTradeWaiting={trade.outgoingTradeWaiting}
+            myBalance={myBalance}
+            onTradeRequest={trade.openTrade}
+            onCancelOutgoingTradeRequest={trade.cancelOutgoingTradeRequest}
+            onUpdateTradeOffer={trade.updateTradeOffer}
+            onConfirmTrade={trade.confirmActiveTrade}
+            onCancelTrade={trade.cancelActiveTrade}
           />
         </ChatSlide>
       )}
+
+      {/* Incoming trade request - jahan bhi ho turant chhota banner (non-blocking) */}
+      <TradeRequestModal
+        request={trade.incomingTradeRequest}
+        onAccept={trade.acceptTradeRequest}
+        onDecline={trade.declineTradeRequest}
+        onOpenChat={(req) => openChatForTradeRef.current({ id: req.from_id, username: req.from_username })}
+      />
     </>
   );
 }

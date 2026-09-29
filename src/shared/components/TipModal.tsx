@@ -14,6 +14,7 @@ import { calculateZMoneyCost, isValidZMoneyAmount } from '../utils/zmoney';
 import useTopZIndex from '../hooks/useTopZIndex';
 import useBackButtonHandler from '../hooks/useBackButtonHandler';
 import useStableCallback from '../hooks/useStableCallback';
+import { Easing } from 'react-native-reanimated';
 
 /**
  * target: { id, username } | null - jise tip karna hai
@@ -78,7 +79,7 @@ const TipModal = ({ show, target, myBalance, onSend, onClose }: TipModalProps) =
         <MotiView
           from={{ translateY: 24, opacity: 0, scale: 0.98 }}
           animate={{ translateY: 0, opacity: 1, scale: 1 }}
-          transition={{ type: 'spring', damping: 22, stiffness: 260 }}
+          transition={{ type: 'timing', duration: 240, easing: Easing.out(Easing.cubic) }}
           style={styles.card}
         >
           <View style={styles.headerRow}>

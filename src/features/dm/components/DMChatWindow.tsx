@@ -3,7 +3,6 @@ import {
   FlatList,
   Image,
   Keyboard,
-  KeyboardAvoidingView,
   Platform,
   Pressable,
   StyleSheet,
@@ -12,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { MotiView } from 'moti';
+import Animated, { useAnimatedKeyboard, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import SwipeableBubble from '../../../shared/components/SwipeableBubble';
@@ -367,24 +367,32 @@ const DMChatWindow = ({
   const closeEmoji = useStableCallback(() => setEmojiOpen(false));
   useBackButtonHandler(emojiOpen, closeEmoji);
 
-  // Default behaviour: keyboard khulne par poori screen upar push hoti hai
-  // (KeyboardAvoidingView). Keyboard khula ho to bottom safe-area padding
-  // ki zaroorat nahi, isliye kbOpen track karte hain.
-  const [kbOpen, setKbOpen] = useState(false);
+  // SMOOTH keyboard: KeyboardAvoidingView (JS-side padding jump = "snap") hata diya.
+  // Ab neeche ek Animated spacer hai jiski height reanimated ke `useAnimatedKeyboard`
+  // se UI thread par keyboard ke saath frame-by-frame badalti hai - input bar
+  // keyboard ke saath chipak ke smoothly upar aata hai, koi snap/bounce nahi.
+  // Emoji panel khula ho to spacer 0 (panel khud bottom inset handle karta hai).
+  // NOTE: app.json mein android.softwareKeyboardLayoutMode = "resize" zaroori hai.
+  const keyboard = useAnimatedKeyboard();
+  const emojiOpenSV = useSharedValue(0);
+  useEffect(() => {
+    emojiOpenSV.value = emojiOpen ? 1 : 0;
+  }, [emojiOpen, emojiOpenSV]);
+  const keyboardSpacerStyle = useAnimatedStyle(() => ({
+    height: emojiOpenSV.value === 1 ? 0 : Math.max(insets.bottom, keyboard.height.value),
+  }));
+
   useEffect(() => {
     const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
     const a = Keyboard.addListener(showEvt, (e: any) => {
       const h = e?.endCoordinates?.height;
       if (h && h > 150) kbHeightRef.current = h;
-      setKbOpen(true);
+      // Inverted list bottom se anchored hai - viewport chhota hone par latest
+      // apne aap dikhta rehta hai, alag scroll animation nahi (warna jitter).
       setEmojiOpen(false);
-      requestAnimationFrame(() => listRef.current?.scrollToOffset({ offset: 0, animated: true }));
     });
-    const b = Keyboard.addListener(hideEvt, () => setKbOpen(false));
     return () => {
       a.remove();
-      b.remove();
     };
   }, []);
 
@@ -581,7 +589,7 @@ const DMChatWindow = ({
     // Slide/animation ab parent (DMOverlayScreen -> ChatSlide) karta hai -
     // yahan koi fade/translate nahi, warna blink hota hai.
     <View style={[styles.screen, { zIndex, elevation: 20 }]}>
-      <KeyboardAvoidingView style={styles.flex} behavior="padding" enabled={!emojiOpen}>
+      <View style={styles.flex}>
         {/* Header */}
         <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
           <Pressable onPress={onClose} style={styles.backBtn} hitSlop={10}>
@@ -704,6 +712,8 @@ const DMChatWindow = ({
             windowSize={7}
             onEndReachedThreshold={0.3}
             keyboardShouldPersistTaps="handled"
+            bounces={false}
+            overScrollMode="never"
             contentContainerStyle={styles.listContent}
             style={styles.flex}
             ListFooterComponent={
@@ -736,7 +746,7 @@ const DMChatWindow = ({
         )}
 
         {/* Input area */}
-        <View style={[styles.inputRow, { paddingBottom: kbOpen || emojiOpen ? 10 : insets.bottom + 12 }]}>
+        <View style={styles.inputRow}>
           {requestLock === 'pending_incoming' ? (
             <View style={styles.reqRow}>
               <Text style={styles.reqText}>{selectedDM.username} sent you a message request.</Text>
@@ -817,7 +827,8 @@ const DMChatWindow = ({
           onClose={() => setReportState(null)}
           onDone={(m: any) => showActionToast(m === 'block' ? 'User blocked.' : 'Report submitted, thank you.')}
         />
-      </KeyboardAvoidingView>
+      <Animated.View style={keyboardSpacerStyle} pointerEvents="none" />
+      </View>
     </View>
   );
 };
@@ -967,7 +978,7 @@ const styles = StyleSheet.create({
   editBtns: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8 },
   editBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
   editBtnText: { color: '#ffffff', fontSize: 12, fontWeight: '700' },
-  inputRow: { paddingHorizontal: 12, paddingTop: 10, paddingBottom: 12, flexDirection: 'row', gap: 8, alignItems: 'flex-end' },
+  inputRow: { paddingHorizontal: 12, paddingTop: 10, paddingBottom: 10, flexDirection: 'row', gap: 8, alignItems: 'flex-end' },
   input: {
     flex: 1,
     color: '#ffffff',

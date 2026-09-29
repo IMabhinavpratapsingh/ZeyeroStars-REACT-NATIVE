@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import axios from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE } from '../../../shared/config/config';
 import { createCachedResource } from '../../../shared/services/persistentCache';
 import { getToken } from '../../../shared/services/NetworkManager';
@@ -21,15 +22,97 @@ export type InboxRow = {
   [key: string]: any;
 };
 
+/**
+ * "Me: hello" prefix ka masla: backend `/ws/dm/inbox/list` last_message ka
+ * sender nahi batata (ya alag format mein batata hai), isliye refresh par
+ * local `last_message_mine` overwrite ho jaata tha. Yahan har target ke liye
+ * (last_message text + mine flag) yaad rakhte hain (memory + AsyncStorage) aur
+ * server rows par wapas laga dete hain agar last_message wahi hai.
+ * Permanent fix: backend se `last_message_mine` (bool) bhejo.
+ */
+const MINE_STORE_KEY = 'inbox_last_mine_v1';
+const mineMemory = new Map<string, { text: string; mine: boolean }>();
+let mineLoaded: Promise<void> | null = null;
+let minePersistTimer: ReturnType<typeof setTimeout> | null = null;
+
+const ensureMineLoaded = (): Promise<void> => {
+  if (!mineLoaded) {
+    mineLoaded = AsyncStorage.getItem(MINE_STORE_KEY)
+      .then((raw) => {
+        if (!raw) return;
+        const obj = JSON.parse(raw) as Record<string, { text: string; mine: boolean }>;
+        Object.entries(obj).forEach(([k, v]) => {
+          if (!mineMemory.has(k)) mineMemory.set(k, v);
+        });
+      })
+      .catch(() => {});
+  }
+  return mineLoaded;
+};
+
+const persistMine = () => {
+  if (minePersistTimer) clearTimeout(minePersistTimer);
+  minePersistTimer = setTimeout(() => {
+    const obj: Record<string, { text: string; mine: boolean }> = {};
+    mineMemory.forEach((v, k) => {
+      obj[k] = v;
+    });
+    AsyncStorage.setItem(MINE_STORE_KEY, JSON.stringify(obj)).catch(() => {});
+  }, 500);
+};
+
+const coerceMine = (v: any): boolean | undefined => {
+  if (v === true || v === 1 || v === '1') return true;
+  if (v === false || v === 0 || v === '0') return false;
+  if (typeof v === 'string') {
+    const t = v.trim().toLowerCase();
+    if (t === 'true' || t === 't') return true;
+    if (t === 'false' || t === 'f') return false;
+  }
+  return undefined;
+};
+
+/** Local (websocket / send) updates se aane wale flags yaad rakho. */
+const rememberMine = (rows: InboxRow[]) => {
+  let changed = false;
+  rows.forEach((row) => {
+    const mine = coerceMine(row.last_message_mine);
+    if (mine === undefined || row.last_message == null) return;
+    const key = String(row.target_id);
+    const prev = mineMemory.get(key);
+    if (!prev || prev.text !== row.last_message || prev.mine !== mine) {
+      mineMemory.set(key, { text: row.last_message, mine });
+      changed = true;
+    }
+  });
+  if (changed) persistMine();
+};
+
+/** Server rows ko normalize karo: flag coerce karo, na ho to yaad rakha hua laga do. */
+const normalizeInboxRows = (rows: InboxRow[]): InboxRow[] =>
+  rows.map((row) => {
+    let mine = coerceMine(row.last_message_mine);
+    if (mine === undefined) {
+      const senderId = row.last_sender_id ?? row.last_message_sender_id;
+      if (senderId != null) mine = String(senderId) !== String(row.target_id);
+    }
+    if (mine === undefined) {
+      const remembered = mineMemory.get(String(row.target_id));
+      if (remembered && remembered.text === row.last_message) mine = remembered.mine;
+    }
+    return mine === undefined ? row : { ...row, last_message_mine: mine };
+  });
+
 type InboxSnapshot = { list: InboxRow[]; hasMore: boolean };
 
 async function fetchInboxFirstPage(): Promise<InboxSnapshot> {
   const token = getToken();
+  await ensureMineLoaded();
   const res = await axios.get(`${API_BASE}/ws/dm/inbox/list`, {
     headers: { Authorization: `Bearer ${token}` },
     params: { offset: 0, limit: INBOX_PAGE_SIZE },
   });
-  return { list: res.data.inbox || [], hasMore: !!res.data.has_more };
+  return { list: normalizeInboxRows(res.data.inbox || []), hasMore: !!res.data.has_more };
 }
 
 const inboxResource = createCachedResource<InboxSnapshot>({
@@ -108,6 +191,7 @@ export default function useInboxState({ cacheUser, closeOtherNavPanels }: UseInb
     (updater: InboxRow[] | ((prev: InboxRow[]) => InboxRow[])) => {
       setInboxListState((prev) => {
         const next = typeof updater === 'function' ? (updater as any)(prev) : updater;
+        rememberMine(next);
         inboxResource.setLocal({ list: next, hasMore: inboxHasMoreRef.current });
         inboxRealtimeVersionRef.current += 1;
         return next;
@@ -300,7 +384,8 @@ export default function useInboxState({ cacheUser, closeOtherNavPanels }: UseInb
         ...config,
         params: { offset: inboxOffset, limit: INBOX_PAGE_SIZE },
       });
-      const newList: InboxRow[] = res.data.inbox || [];
+      await ensureMineLoaded();
+      const newList: InboxRow[] = normalizeInboxRows(res.data.inbox || []);
       setInboxList((prev) => {
         const existingIds = new Set(prev.map((d) => d.target_id));
         return [...prev, ...newList.filter((d) => !existingIds.has(d.target_id))];

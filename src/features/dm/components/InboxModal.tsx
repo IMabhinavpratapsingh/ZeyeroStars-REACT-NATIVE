@@ -20,13 +20,10 @@ import useAvatarImage from '../../avatar/hooks/useAvatarImage';
 import OnlineStatusDot from '../../../shared/components/OnlineStatusDot';
 import useLongPress from '../../../shared/hooks/useLongPress';
 import confirmAction from '../../../shared/utils/confirmBus';
-import { showAlert } from '../../../shared/utils/alertBus';
 import VerifiedBadge from '../../../shared/components/VerifiedBadge';
 import EliteBadge from '../../../shared/components/EliteBadge';
 import KebabMenu, { type KebabMenuHandle } from '../../../shared/components/KebabMenu';
-import CommunityAvatar from '../../communities/components/CommunityAvatar';
 import { getActiveRooms } from '../../rooms/services/roomsApi';
-import { listActiveCommunityRooms, listMyCommunities } from '../../communities/services/communitiesApi';
 
 /**
  * Ek row alag, memoized component me - Instagram jaisa round pfp, naam ke
@@ -51,10 +48,24 @@ import { listActiveCommunityRooms, listMyCommunities } from '../../communities/s
  */
 // Last message meri bheji hui hai ya samne wale ki? Backend `last_message_mine`
 // (bool) ya `last_sender_id` de to wahi use hota hai.
+const truthy = (v: any): boolean | null => {
+  if (v === true || v === 1 || v === '1') return true;
+  if (v === false || v === 0 || v === '0') return false;
+  if (typeof v === 'string') {
+    const t = v.trim().toLowerCase();
+    if (t === 'true' || t === 't') return true;
+    if (t === 'false' || t === 'f') return false;
+  }
+  return null;
+};
+
 const isMine = (dm: any): boolean => {
-  if (typeof dm?.last_message_mine === 'boolean') return dm.last_message_mine;
-  if (dm?.last_sender_id != null && dm?.target_id != null) {
-    return String(dm.last_sender_id) !== String(dm.target_id);
+  // Backend kabhi boolean, kabhi 0/1 ya "true"/"false" bhejta hai - sab handle.
+  const flag = truthy(dm?.last_message_mine ?? dm?.is_last_message_mine ?? dm?.last_message_is_mine);
+  if (flag !== null) return flag;
+  const senderId = dm?.last_sender_id ?? dm?.last_message_sender_id ?? dm?.last_message_sender;
+  if (senderId != null && dm?.target_id != null) {
+    return String(senderId) !== String(dm.target_id);
   }
   return false;
 };
@@ -316,53 +327,7 @@ const RoomInboxRow = memo(({ room, onSelect }: { room: any; onSelect?: (room: an
 ));
 RoomInboxRow.displayName = 'RoomInboxRow';
 
-// "Community Rooms" tab row - active community rooms, tap karne par
-// seedha us community ke LIVE room mein.
-const CommunityRoomInboxRow = memo(({ community, onSelect }: { community: any; onSelect?: (c: any) => void }) => (
-  <Pressable
-    onPress={() => onSelect?.(community)}
-    style={({ pressed }) => [
-      styles.inboxRow,
-      community.is_team ? styles.inboxRowGold : styles.inboxRowRead,
-      pressed && styles.rowPressed,
-    ]}
-  >
-    <View style={styles.avatarWrap}>
-      <CommunityAvatar communityId={community.id} iconId={community.icon_id} iconUrl={community.icon_url} size="lg" />
-      {community.is_team && (
-        <View style={styles.teamBadge}>
-          <Ionicons name="sparkles-outline" size={10} color="#0a0a0a" />
-        </View>
-      )}
-    </View>
-
-    <View style={styles.rowTextWrap}>
-      <Text style={styles.rowTitle} numberOfLines={1}>
-        {community.name}
-      </Text>
-      <View style={styles.metaRow}>
-        <Ionicons name="people-outline" size={12} color="#9a9a9a" />
-        <Text style={styles.rowSubtitle} numberOfLines={1}>
-          {' '}
-          {community.member_count ?? 0} members
-        </Text>
-      </View>
-    </View>
-
-    <View style={styles.rowTrailing}>
-      {(community.room_user_count || 0) > 0 && (
-        <View style={styles.liveRow}>
-          <View style={styles.liveDot} />
-          <Text style={styles.liveText}>Live</Text>
-        </View>
-      )}
-      <Ionicons name="chevron-forward-outline" size={16} color="#525252" />
-    </View>
-  </Pressable>
-));
-CommunityRoomInboxRow.displayName = 'CommunityRoomInboxRow';
-
-type InboxTab = 'primary' | 'requests' | 'rooms' | 'community';
+type InboxTab = 'primary' | 'requests' | 'rooms';
 
 interface InboxModalProps {
   show: boolean;
@@ -385,15 +350,12 @@ interface InboxModalProps {
   onDeleteConversation: (id: string | number) => void;
   onOpenWorldChat?: () => void;
   onSelectRoom?: (room: any) => void;
-  onOpenCommunityRoom?: (community: any) => void;
-  onOpenCommunity?: (community: any) => void;
 }
 
 const TAB_DEFS: { id: InboxTab; label: string }[] = [
   { id: 'primary', label: 'Primary' },
   { id: 'requests', label: 'Requests' },
   { id: 'rooms', label: 'Rooms' },
-  { id: 'community', label: 'Community Rooms' },
 ];
 
 const InboxModal = ({
@@ -417,14 +379,11 @@ const InboxModal = ({
   onDeleteConversation,
   onOpenWorldChat,
   onSelectRoom,
-  onOpenCommunityRoom,
-  onOpenCommunity,
 }: InboxModalProps) => {
   const zIndex = useTopZIndex(show);
   const insets = useSafeAreaInsets();
   // "primary" = normal accepted chats, "requests" = pending message
   // requests, "rooms" = active rooms (+ ZeyeroStars/is_team rooms),
-  // "community" = active community rooms.
   const [activeTab, setActiveTab] = useState<InboxTab>('primary');
   // searchTerm: input box me jo abhi type ho raha hai (draft).
   // activeQuery: search button (ya submit) dabane par isme "commit" hota
@@ -435,13 +394,9 @@ const InboxModal = ({
   const handleClose = useStableCallback(() => onClose?.());
   useBackButtonHandler(show, handleClose);
 
-  // Rooms / Community Rooms tabs ka apna local data - RoomsModal jaisa
-  // hi (yeh dono tabs waqt-e-zaroorat khud fetch karte hain).
+  // Rooms tab ka apna local data - RoomsModal jaisa hi (waqt-e-zaroorat khud fetch karta hai).
   const [roomsList, setRoomsList] = useState<any[]>([]);
-  const [communityRoomsList, setCommunityRoomsList] = useState<any[]>([]);
-  const [joinedCommunityIds, setJoinedCommunityIds] = useState<Set<string | number>>(new Set());
   const [roomsLoading, setRoomsLoading] = useState(false);
-  const [communityRoomsLoading, setCommunityRoomsLoading] = useState(false);
   // Har tab pehli baar load ho chuka hai kya - dobara us tab par jaane
   // par purani list turant dikhao, silently refresh karo.
   const [loadedExtraTabs, setLoadedExtraTabs] = useState<Record<string, boolean>>({});
@@ -462,36 +417,11 @@ const InboxModal = ({
     }
   };
 
-  const loadCommunityRooms = async ({ silent = false }: { silent?: boolean } = {}) => {
-    if (!silent) setCommunityRoomsLoading(true);
-    try {
-      const [activeRes, mineRes] = await Promise.all([listActiveCommunityRooms(), listMyCommunities()]);
-      const mine = mineRes.data?.communities || [];
-      setCommunityRoomsList(activeRes.data?.communities || []);
-      setJoinedCommunityIds(new Set(mine.map((c: any) => c.id)));
-      setLoadedExtraTabs((prev) => ({ ...prev, community: true }));
-    } catch (err: any) {
-      console.error('Inbox community rooms load error:', err.response?.data || err.message);
-    } finally {
-      if (!silent) setCommunityRoomsLoading(false);
-    }
-  };
-
   useEffect(() => {
     if (!show) return;
     if (activeTab === 'rooms') loadRooms({ silent: !!loadedExtraTabs.rooms });
-    else if (activeTab === 'community') loadCommunityRooms({ silent: !!loadedExtraTabs.community });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [show, activeTab]);
-
-  const handleCommunityRoomTap = (community: any) => {
-    if (!joinedCommunityIds.has(community.id)) {
-      showAlert('Join this community first to enter its room.');
-      onOpenCommunity?.(community);
-      return;
-    }
-    onOpenCommunityRoom?.(community);
-  };
 
   const runSearch = () => setActiveQuery(searchTerm.trim());
 
@@ -502,8 +432,6 @@ const InboxModal = ({
         await onRefreshRequests?.();
       } else if (activeTab === 'rooms') {
         await loadRooms({ silent: true });
-      } else if (activeTab === 'community') {
-        await loadCommunityRooms({ silent: true });
       } else {
         await onRefresh?.();
       }
@@ -530,12 +458,6 @@ const InboxModal = ({
     if (!q) return roomsList;
     return roomsList.filter((r) => (r.room_name || '').toLowerCase().includes(q));
   }, [roomsList, activeQuery]);
-
-  const filteredCommunityRooms = useMemo(() => {
-    const q = activeQuery.toLowerCase();
-    if (!q) return communityRoomsList;
-    return communityRoomsList.filter((c) => (c.name || '').toLowerCase().includes(q));
-  }, [communityRoomsList, activeQuery]);
 
   return (
     <AnimatePresence>
@@ -590,7 +512,6 @@ const InboxModal = ({
                   <Pressable onPress={() => setActiveTab(t.id)} style={[styles.tabPill, active ? styles.tabPillActive : styles.tabPillInactive]}>
                     {t.id === 'primary' && active && unreadTotal > 0 && <View style={styles.tabUnreadDot} />}
                     {t.id === 'rooms' && <Ionicons name="exit-outline" size={14} color={active ? '#0a0a0a' : '#9a9a9a'} />}
-                    {t.id === 'community' && <Ionicons name="people-outline" size={14} color={active ? '#0a0a0a' : '#9a9a9a'} />}
                     <Text style={[styles.tabPillText, active ? styles.tabPillTextActive : styles.tabPillTextInactive]}>{t.label}</Text>
                     {t.id === 'primary' && unreadTotal > 0 && (
                       <Text style={active ? styles.tabCountActive : styles.tabCountInactive}>
@@ -691,29 +612,6 @@ const InboxModal = ({
                 )
               }
               renderItem={({ item }) => <RoomInboxRow room={item} onSelect={onSelectRoom} />}
-            />
-          )}
-
-          {activeTab === 'community' && (
-            <FlatList
-              data={filteredCommunityRooms}
-              keyExtractor={(item) => String(item.id)}
-              contentContainerStyle={styles.listContent}
-              refreshControl={<RefreshControl refreshing={refreshingTab} onRefresh={handlePullRefresh} tintColor="#818cf8" />}
-              ListEmptyComponent={
-                communityRoomsLoading ? (
-                  <>
-                    {Array.from({ length: 4 }).map((_, i) => (
-                      <SkeletonCard key={i} />
-                    ))}
-                  </>
-                ) : (
-                  <Text style={styles.emptyText}>
-                    {activeQuery ? `No community called "${activeQuery}"` : 'No active community rooms right now.'}
-                  </Text>
-                )
-              }
-              renderItem={({ item }) => <CommunityRoomInboxRow community={item} onSelect={handleCommunityRoomTap} />}
             />
           )}
         </MotiView>

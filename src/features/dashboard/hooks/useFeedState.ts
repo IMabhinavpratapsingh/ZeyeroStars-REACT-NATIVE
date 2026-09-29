@@ -1,5 +1,11 @@
 import { useCallback, useRef, useState } from 'react';
-import { createPost as createPostApi, getFeedPosts, togglePostLike } from '../../feed/services/feedApi';
+import {
+  createPost as createPostApi,
+  getFeedPosts,
+  togglePostLike,
+  uploadPostImage,
+} from '../../feed/services/feedApi';
+import { compressImage, toUploadFormPart } from '../../../shared/utils/imageCompress';
 
 const FEED_PAGE_SIZE = 10;
 
@@ -160,8 +166,27 @@ export default function useFeedState() {
   // Naya post banane ke baad seedha list ke top par daal do - reload ka
   // wait nahi karna padta (Instagram jaisa optimistic feel).
   const createPost = useCallback(
-    async (args: { content: string; communityId: string | number; hashtag?: string | null }) => {
-      const res = await createPostApi(args);
+    async (args: {
+      content: string;
+      communityId: string | number;
+      hashtag?: string | null;
+      imageUri?: string | null; // local file:// uri (expo-image-picker) - pehle upload, phir post
+    }) => {
+      let imageUrl: string | undefined;
+      if (args.imageUri) {
+        const compressed = await compressImage(args.imageUri).catch(() => null);
+        const part = compressed
+          ? toUploadFormPart(compressed)
+          : { uri: args.imageUri, name: 'photo.jpg', type: 'image/jpeg' };
+        const uploaded = await uploadPostImage(part);
+        imageUrl = uploaded.data?.image_url;
+      }
+      const res = await createPostApi({
+        content: args.content,
+        communityId: args.communityId,
+        hashtag: args.hashtag,
+        imageUrl,
+      });
       const newPost: FeedPost | undefined = res.data.post;
       if (newPost) {
         setPosts((prev) => [newPost, ...prev]);

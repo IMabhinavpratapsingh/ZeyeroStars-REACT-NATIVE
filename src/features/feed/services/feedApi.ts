@@ -25,19 +25,39 @@ export const getUserPosts = (userId: Id, offset = 0, limit = 10) =>
 // Notification tap par sirf post_id milta hai - response: { post }
 export const getPost = (postId: Id) => axios.get(`${API_BASE}/feed/post/${postId}`, authConfig());
 
+// Post ki photo pehle alag upload hoti hai (backend compress + webp karta hai),
+// response: { image_url } - phir wahi URL createPost ko dete hain.
+// RN mein File/Blob nahi hota - { uri, name, type } object chahiye
+// (imageCompress.ts ka toUploadFormPart() yehi banata hai).
+// NOTE: Content-Type manually mat set karna - axios/RN boundary khud lagata hai.
+export type PostImageFile = { uri: string; name: string; type: string };
+
+export const uploadPostImage = (file: PostImageFile) => {
+  const formData = new FormData();
+  formData.append('file', file as any);
+  return axios.post(`${API_BASE}/feed/upload-image`, formData, authConfig());
+};
+
 // /feed/create/post plain QUERY PARAMS leta hai (JSON body nahi) - body null.
 export const createPost = ({
   content,
   communityId,
   hashtag,
+  imageUrl,
 }: {
   content: string;
   communityId: Id;
   hashtag?: string | null;
+  imageUrl?: string | null;
 }) =>
   axios.post(`${API_BASE}/feed/create/post`, null, {
     ...authConfig(),
-    params: { content, community_id: communityId, hashtag: hashtag || undefined },
+    params: {
+      content,
+      community_id: communityId,
+      hashtag: hashtag || undefined,
+      image_url: imageUrl || undefined,
+    },
   });
 
 // Response: { liked, likes }

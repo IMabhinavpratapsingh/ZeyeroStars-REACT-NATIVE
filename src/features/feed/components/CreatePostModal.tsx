@@ -10,6 +10,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import useBackButtonHandler from '../../../shared/hooks/useBackButtonHandler';
 import useTopZIndex from '../../../shared/hooks/useTopZIndex';
@@ -19,10 +21,11 @@ import CommunityAvatar from '../../communities/components/CommunityAvatar';
 /**
  * WEB -> RN NOTE: capacitor wale CreatePostModal.jsx me community picker
  * (locked / dropdown-with-cards), hashtag input, textarea aur photo
- * attach (file input + preview) tha. Yeh pehla RN pass photo attach ko
- * skip karta hai (FeedList bhi abhi images nahi dikhata - dono saath me
- * agla pass milenge) - baaki (community picker + hashtag + content) poora
- * hai.
+ * attach (file input + preview) tha. Ab sab kuch hai: photo attach
+ * `expo-image-picker` se hota hai (`<input type=file>` ki jagah), preview
+ * niche dikhta hai, X se hata sakte ho. Sirf photo ke saath (bina text ke)
+ * bhi post ho sakta hai - web jaisa. Compress + upload parent ke
+ * `onSubmit` (useFeedState.createPost) mein hota hai.
  *
  * `posts.community_id` backend me NOT NULL hai - post karne ke liye ek
  * community chahiye hi. lockedCommunity pass karo jab yeh CommunityDetailScreen
@@ -48,12 +51,20 @@ interface CreatePostModalProps {
   onClose: () => void;
   onSubmit: () => void;
   posting: boolean;
+  imageUri?: string | null;
+  onChangeImage?: (uri: string | null) => void;
   lockedCommunity?: PickerCommunity | null;
   myCommunities?: PickerCommunity[];
   communityId?: string | number | null;
   onChangeCommunityId?: (id: string | number) => void;
   onExploreCommunities?: () => void;
 }
+
+// Community picker: har row ki fixed height, taaki maxHeight ke hisaab se
+// theek 3 rows dikhein aur 4th se scroll shuru ho (Post button screen se
+// neeche na jaye).
+const PICKER_ROW_H = 56;
+const PICKER_VISIBLE_ROWS = 3;
 
 const CreatePostModal = ({
   show,
@@ -64,6 +75,8 @@ const CreatePostModal = ({
   onClose,
   onSubmit,
   posting,
+  imageUri,
+  onChangeImage,
   lockedCommunity,
   myCommunities,
   communityId,
@@ -77,8 +90,23 @@ const CreatePostModal = ({
 
   if (!show) return null;
 
+  const handlePickImage = async () => {
+    if (posting) return;
+    try {
+      const picked = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        quality: 1,
+      });
+      if (picked.canceled || !picked.assets?.[0]?.uri) return;
+      onChangeImage?.(picked.assets[0].uri);
+    } catch (err: any) {
+      console.error('Post image pick error:', err?.message);
+    }
+  };
+
   const noCommunities = !lockedCommunity && (!myCommunities || myCommunities.length === 0);
-  const canSubmit = !posting && !!content.trim() && (!!lockedCommunity || !!communityId);
+  const canSubmit = !posting && (!!content.trim() || !!imageUri) && (!!lockedCommunity || !!communityId);
   const selectedCommunity =
     !lockedCommunity && communityId ? myCommunities?.find((c) => c.id === communityId) : null;
 
@@ -153,7 +181,12 @@ const CreatePostModal = ({
               </Pressable>
 
               {pickerOpen && (
-                <ScrollView style={styles.pickerList} nestedScrollEnabled>
+                <ScrollView
+                  style={styles.pickerList}
+                  nestedScrollEnabled
+                  showsVerticalScrollIndicator
+                  keyboardShouldPersistTaps="handled"
+                >
                   {myCommunities?.map((c) => (
                     <Pressable
                       key={String(c.id)}
@@ -210,6 +243,32 @@ const CreatePostModal = ({
             numberOfLines={4}
             autoFocus
           />
+
+          {/* Photo attach - optional */}
+          {imageUri ? (
+            <View style={styles.previewWrap}>
+              <Image source={{ uri: imageUri }} style={styles.previewImg} contentFit="cover" />
+              {!posting && (
+                <Pressable
+                  onPress={() => onChangeImage?.(null)}
+                  hitSlop={8}
+                  accessibilityLabel="Remove photo"
+                  style={styles.previewRemove}
+                >
+                  <Ionicons name="close" size={16} color="#ffffff" />
+                </Pressable>
+              )}
+            </View>
+          ) : (
+            <Pressable
+              onPress={handlePickImage}
+              accessibilityLabel="Add photo"
+              style={({ pressed }) => [styles.addPhotoBtn, pressed && { opacity: 0.8 }]}
+            >
+              <Ionicons name="image-outline" size={16} color="#a1a1aa" />
+              <Text style={styles.addPhotoText}>Add Photo</Text>
+            </Pressable>
+          )}
 
           <Pressable
             onPress={onSubmit}
@@ -296,7 +355,7 @@ const styles = StyleSheet.create({
   pickerPlaceholder: { flex: 1, color: '#71717a', fontSize: 13 },
   pickerList: {
     marginTop: 4,
-    maxHeight: 220,
+    maxHeight: PICKER_ROW_H * PICKER_VISIBLE_ROWS, // 3 community dikhengi, uske baad list andar scroll hogi
     backgroundColor: '#0f0f11',
     borderWidth: 1,
     borderColor: '#27272a',
@@ -304,10 +363,10 @@ const styles = StyleSheet.create({
   },
   pickerItem: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    height: PICKER_ROW_H,
     gap: 8,
     paddingHorizontal: 10,
-    paddingVertical: 9,
     borderBottomWidth: 1,
     borderBottomColor: '#18181b',
   },
@@ -338,6 +397,39 @@ const styles = StyleSheet.create({
     padding: 12,
     minHeight: 96,
     textAlignVertical: 'top',
+  },
+  addPhotoBtn: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: '#3f3f46',
+    backgroundColor: '#0f0f11',
+  },
+  addPhotoText: { color: '#a1a1aa', fontSize: 13 },
+  previewWrap: {
+    marginTop: 12,
+    borderRadius: 10,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#27272a',
+  },
+  previewImg: { width: '100%', height: 180 },
+  previewRemove: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   submitBtn: { marginTop: 14, alignSelf: 'flex-end', paddingHorizontal: 22, paddingVertical: 10, borderRadius: 999 },
   submitBtnOn: { backgroundColor: '#4f46e5' },

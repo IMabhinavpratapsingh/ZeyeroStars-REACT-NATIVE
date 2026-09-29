@@ -60,6 +60,7 @@ export default function DashboardScreen() {
   const [showCreate, setShowCreate] = useState(false);
   const [content, setContent] = useState('');
   const [hashtag, setHashtag] = useState('');
+  const [imageUri, setImageUri] = useState<string | null>(null);
   const [communityId, setCommunityId] = useState<string | number | null>(null);
   const [posting, setPosting] = useState(false);
   // CommunityDetailScreen ke "+ Post" se aaya hua locked community (agar
@@ -121,6 +122,7 @@ export default function DashboardScreen() {
   const openCreate = useCallback(() => {
     setContent('');
     setHashtag('');
+    setImageUri(null);
     setCommunityId(null);
     loadMyCommunities();
     setShowCreate(true);
@@ -135,6 +137,7 @@ export default function DashboardScreen() {
         // seedha is community par post modal kholo.
         setContent('');
         setHashtag('');
+        setImageUri(null);
         setCommunityId(lockedCommunityId);
         setLockedCommunity({
           id: lockedCommunityId,
@@ -158,12 +161,18 @@ export default function DashboardScreen() {
 
   const handleSubmit = async () => {
     const targetCommunityId = lockedCommunity?.id || communityId;
-    if (!content.trim() || !targetCommunityId || posting) return;
+    if ((!content.trim() && !imageUri) || !targetCommunityId || posting) return;
     setPosting(true);
     try {
-      await createPost({ content: content.trim(), communityId: targetCommunityId, hashtag: hashtag || null });
+      await createPost({
+        content: content.trim(),
+        communityId: targetCommunityId,
+        hashtag: hashtag || null,
+        imageUri,
+      });
       setShowCreate(false);
       setLockedCommunity(null);
+      setImageUri(null);
     } catch (err: any) {
       console.error('Create post error:', err.response?.data || err.message);
       showAlert(err.response?.data?.detail || "Couldn't create post, try again.");
@@ -231,9 +240,12 @@ export default function DashboardScreen() {
         onClose={() => {
           setShowCreate(false);
           setLockedCommunity(null);
+          setImageUri(null);
         }}
         onSubmit={handleSubmit}
         posting={posting}
+        imageUri={imageUri}
+        onChangeImage={setImageUri}
         lockedCommunity={lockedCommunity}
         myCommunities={myCommunities}
         communityId={communityId}

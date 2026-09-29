@@ -19,6 +19,12 @@ import DMOverlayScreen from '../../features/dm/components/DMOverlayScreen';
 import RoomsOverlayScreen from '../../features/rooms/components/RoomsOverlayScreen';
 import ProfileViewModal from '../../features/dm/components/ProfileViewModal';
 import ShopModal from '../../features/dm/components/ShopModal';
+import SettingsMenu from '../../features/dm/components/SettingsMenu';
+import LeaderboardModal from '../../features/dm/components/LeaderboardModal';
+import MissionsModal from '../../features/missions/components/MissionsModal';
+import DailyRewardPopup from '../../shared/components/DailyRewardPopup';
+import RankRewardsScreen from '../../shared/components/RankRewardsScreen';
+import StoreScreen from '../../shared/components/StoreScreen';
 import SearchModal from '../../features/dm/components/SearchModal';
 import NotificationsModal from '../../features/dm/components/NotificationsModal';
 import PostDetailModal from '../../features/feed/components/PostDetailModal';
@@ -117,7 +123,10 @@ export default function TabsLayout() {
         const res = await axios.get(`${API_BASE}/profile/${myId}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (!cancelled) setMyAvatarUrl(res.data?.[FIELD.avatar] ?? null);
+        if (!cancelled) {
+          setMyAvatarUrl(res.data?.[FIELD.avatar] ?? null);
+          setMyUsername(res.data?.username || '');
+        }
       } catch {
         // ignore - Header default icon dikha dega
       }
@@ -129,6 +138,17 @@ export default function TabsLayout() {
 
   const [quickActionsOpen, setQuickActionsOpen] = useState(false);
   const [showQuickActions, setShowQuickActions] = useState(false);
+
+  // Quick-actions sheet ke tiles ki screens - Header ke Shop/Search jaise
+  // hi in-tree overlays (route nahi), sirf `show` boolean se khulte hain.
+  const [showStore, setShowStore] = useState(false);
+  const [showMissions, setShowMissions] = useState(false);
+  const [showDailyPopup, setShowDailyPopup] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [showRankRewards, setShowRankRewards] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [hasClaimableMission, setHasClaimableMission] = useState(false);
+  const [myUsername, setMyUsername] = useState('');
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Rooms/DM: ab Community jaisa hi persistent-overlay boolean state,
@@ -157,7 +177,7 @@ export default function TabsLayout() {
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearchingUsers, setIsSearchingUsers] = useState(false);
   const [notifPost, setNotifPost] = useState<any | null>(null);
-  const { balance, fetchBalance, setBalance } = useDashboardBalance();
+  const { balance, fetchBalance, setBalance, handleAdRewardCredited } = useDashboardBalance();
 
   useEffect(() => {
     fetchBalance();
@@ -416,6 +436,38 @@ export default function TabsLayout() {
     requestFeedScrollTopReload();
   };
 
+  // Quick-actions tiles - sheet band hone ke saath hi (BottomNav-active wale)
+  // baaki overlays bhi hata do, phir target screen kholo.
+  const openStore = useCallback(() => {
+    closeAllOverlayPanels();
+    setShowStore(true);
+  }, [closeAllOverlayPanels]);
+  const openMissions = useCallback(() => {
+    closeAllOverlayPanels();
+    setShowMissions(true);
+  }, [closeAllOverlayPanels]);
+  const openDaily = useCallback(() => {
+    closeAllOverlayPanels();
+    setShowDailyPopup(true);
+  }, [closeAllOverlayPanels]);
+  const openLeaderboard = useCallback(() => {
+    closeAllOverlayPanels();
+    setShowLeaderboard(true);
+  }, [closeAllOverlayPanels]);
+  const openRankRewards = useCallback(() => {
+    closeAllOverlayPanels();
+    setShowRankRewards(true);
+  }, [closeAllOverlayPanels]);
+  const openSettings = useCallback(() => {
+    closeAllOverlayPanels();
+    setShowSettings(true);
+  }, [closeAllOverlayPanels]);
+
+  const mergeBalance = useCallback(
+    (nb: any) => nb && setBalance((prev) => ({ ...prev, ...nb })),
+    [setBalance],
+  );
+
   const handleComposeClick = () => {
     closeQuickActions();
     router.push({ pathname: '/(tabs)/dashboard', params: { compose: '1' } });
@@ -477,6 +529,15 @@ export default function TabsLayout() {
         open={quickActionsOpen}
         onClose={closeQuickActions}
         onComposeClick={handleComposeClick}
+        onStoreClick={openStore}
+        onMissionsClick={openMissions}
+        hasClaimableMission={hasClaimableMission}
+        onRewardsClick={openDaily}
+        onLeaderboardClick={openLeaderboard}
+        onSettingsClick={openSettings}
+        onRankRewardsClick={openRankRewards}
+        onCommunitiesClick={openCommunities}
+        onAdRewardCredited={handleAdRewardCredited}
       />
 
       <RoomsOverlayScreen show={showRooms} onClose={closeRooms} />
@@ -523,6 +584,53 @@ export default function TabsLayout() {
         onClose={() => setShowShop(false)}
         balance={balance}
         onBalanceUpdate={(b: any) => b && setBalance((prev) => ({ ...prev, ...b }))}
+      />
+
+      <StoreScreen
+        show={showStore}
+        onClose={() => setShowStore(false)}
+        onBalanceUpdate={(updater: any) => setBalance((prev) => (typeof updater === 'function' ? updater(prev) : { ...prev, ...updater }))}
+      />
+
+      <MissionsModal
+        show={showMissions}
+        onClose={() => setShowMissions(false)}
+        balance={balance}
+        onBalanceUpdate={mergeBalance}
+        onMissionsUpdate={setHasClaimableMission}
+      />
+
+      <DailyRewardPopup
+        show={showDailyPopup}
+        onClose={() => setShowDailyPopup(false)}
+        balance={balance}
+        onBalanceUpdate={mergeBalance}
+      />
+
+      <RankRewardsScreen
+        show={showRankRewards}
+        onClose={() => setShowRankRewards(false)}
+        balance={balance}
+        onBalanceUpdate={mergeBalance}
+      />
+
+      <LeaderboardModal
+        show={showLeaderboard}
+        onClose={() => setShowLeaderboard(false)}
+        onOpenProfile={(u) => {
+          setShowLeaderboard(false);
+          requestOpenProfile({ id: u.id, username: u.username });
+        }}
+      />
+
+      <SettingsMenu
+        show={showSettings}
+        onClose={() => setShowSettings(false)}
+        balance={balance}
+        onBalanceUpdate={(updater: any) => setBalance((prev) => (typeof updater === 'function' ? updater(prev) : { ...prev, ...updater }))}
+        currentUsername={myUsername}
+        onUsernameChanged={setMyUsername}
+        onLogout={() => router.replace('/login')}
       />
 
       <SearchModal

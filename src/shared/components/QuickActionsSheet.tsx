@@ -10,9 +10,11 @@ import { preloadRewardedAd, showRewardedAd } from '../services/adsService';
 import { showAlert } from '../utils/alertBus';
 
 /**
- * BottomNav ke "+" FAB se khulne wali quick-actions sheet (neeche se slide-up):
- * create post, watch ads, rank rewards, communities, missions, daily,
- * leaderboard, settings.
+ * Feed ke floating "++" FAB se khulne wali quick-actions sheet (neeche se slide-up):
+ * create post, store (Verified badge + Z Money purchase), watch ads, rank
+ * rewards, communities, missions, daily, leaderboard, settings.
+ * Har tile ka handler parent (`(tabs)/_layout.tsx`) se aata hai - tile tap
+ * par sheet band hoti hai aur phir wahi screen/modal khulta hai.
  *
  * `show` = sheet mounted (Modal visible), `open` = slide-in state (animation).
  * Parent pehle show=true + open=true kare; band karte waqt open=false, phir
@@ -71,6 +73,7 @@ interface QuickActionsSheetProps {
   onRankRewardsClick?: () => void;
   onAdRewardCredited?: (newZMoney: number, zMoneyEarned: number) => void;
   onCommunitiesClick?: () => void;
+  onStoreClick?: () => void;
 }
 
 const SHEET_OFFSCREEN = 800; // sheet ki height se hamesha zyada
@@ -88,6 +91,7 @@ const QuickActionsSheet = ({
   onRankRewardsClick,
   onAdRewardCredited,
   onCommunitiesClick,
+  onStoreClick,
 }: QuickActionsSheetProps) => {
   const insets = useSafeAreaInsets();
   const { width: screenW } = useWindowDimensions();
@@ -98,8 +102,14 @@ const QuickActionsSheet = ({
   const [adCooldownLeft, setAdCooldownLeft] = useState(0);
   const adCooldownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Sheet persistent shell mein boot par hi mount ho jaati hai (tab token
+  // ho na ho) - isliye ad-status har baar sheet KHULNE par fresh fetch hota
+  // hai, sirf mount par nahi (warna login ke baad status kabhi load nahi
+  // hota tha aur daily-limit ka check galat rehta tha).
   useEffect(() => {
+    if (!show) return;
     const token = getToken();
+    if (!token) return;
     axios
       .get(`${API_BASE}/rewards/ad/status`, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => {
@@ -107,10 +117,14 @@ const QuickActionsSheet = ({
       })
       .catch((err) => console.error('Rewarded ad status fetch error:', err?.response?.data || err?.message));
     preloadRewardedAd();
-    return () => {
+  }, [show]);
+
+  useEffect(
+    () => () => {
       if (adCooldownTimerRef.current) clearInterval(adCooldownTimerRef.current);
-    };
-  }, []);
+    },
+    []
+  );
 
   const startAdCooldownTimer = useCallback((seconds: number) => {
     setAdCooldownLeft(seconds);
@@ -217,6 +231,7 @@ const QuickActionsSheet = ({
           <View style={styles.handle} />
           <View style={styles.grid}>
             <SheetTile width={tileW} icon="create-outline" label="Create Post" onPress={runAndClose(onComposeClick)} accent />
+            <SheetTile width={tileW} icon="bag-handle-outline" label="Store" onPress={runAndClose(onStoreClick)} accent />
             <SheetTile width={tileW} icon="play" label={adTileLabel} onPress={handleWatchAdsClick} />
             <SheetTile width={tileW} icon="ribbon-outline" label="Rank Rewards" onPress={runAndClose(onRankRewardsClick)} />
             <SheetTile width={tileW} icon="people-outline" label="Communities" onPress={runAndClose(onCommunitiesClick)} />

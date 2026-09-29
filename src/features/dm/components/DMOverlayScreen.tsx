@@ -15,7 +15,6 @@ import useTradeState from '../../dashboard/hooks/useTradeState';
 import TradeRequestModal from '../../trade/components/TradeRequestModal';
 import InboxModal from './InboxModal';
 import DMChatWindow from './DMChatWindow';
-import { setFullscreenOverlayOpen } from '../../../shared/utils/fullscreenOverlayBus';
 
 // WEB -> RN: yeh pehle `app/(tabs)/dm.tsx` tha (ek Tabs.Screen route). Ab
 // `(tabs)/_layout.tsx` ke andar Community list/detail jaisa hi ek PERSISTENT
@@ -107,7 +106,7 @@ export default function DMOverlayScreen({ show, onClose, onOpenOverlay, myBalanc
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Chat khuli ho to BottomNav hide + overlay poori screen tak (neeche sirf input).
+  // Chat khuli ho to overlay poori screen tak, BottomNav ke upar (nav hide nahi hota).
   const chatVisible = !showInbox && !!dm.selectedDM;
   const [chatMounted, setChatMounted] = useState(false);
   const snapRef = useRef<any>(null);
@@ -136,20 +135,12 @@ export default function DMOverlayScreen({ show, onClose, onOpenOverlay, myBalanc
   const renderChat = (chatVisible || chatMounted) && !!snapRef.current;
   const snap = snapRef.current;
 
-  // Chat layer inbox (PersistentSlide) ka sibling hai aur `bottom: 0` tak jaati hai -
-  // yaani slide-in ke dauran hi BottomNav ko dhak leti hai. Isliye BottomNav/Header
-  // ko slide khatam hone ke BAAD hide karte hain (chat ke peeche, koi visible change
-  // nahi) aur close shuru hote hi wapas laa dete hain (chat abhi bhi upar hai).
+  // Chat layer inbox (PersistentSlide) ka sibling hai aur `bottom: 0` tak jaati hai
+  // (zIndex 1000+ > BottomNav) - yaani BottomNav ke UPAR se dhak leti hai, bilkul
+  // Community/Rooms overlays jaisa. BottomNav ko hide/unmount NAHI karte
+  // (pehle setFullscreenOverlayOpen se karte the) - isse close karte waqt layout
+  // shift / khali jagah pe nav aane ka jhatka khatam.
   const chatShown = show && chatVisible;
-  useEffect(() => {
-    if (!chatShown) {
-      setFullscreenOverlayOpen(false);
-      return;
-    }
-    const t = setTimeout(() => setFullscreenOverlayOpen(true), SLIDE_MS);
-    return () => clearTimeout(t);
-  }, [chatShown]);
-  useEffect(() => () => setFullscreenOverlayOpen(false), []);
 
   // dm object har render badalta hai - ref se handlers stable rakhte hain taaki
   // Inbox (aur uski rows) chat state badalne par bekaar re-render na ho.

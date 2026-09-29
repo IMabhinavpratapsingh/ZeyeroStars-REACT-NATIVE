@@ -169,6 +169,33 @@ class NetworkManager {
     return !!this.ws && this.ws.readyState === WebSocket.OPEN;
   }
 
+  isConnecting(): boolean {
+    return this._connecting;
+  }
+
+  // Socket abhi open nahi hai to connect karwa ke (max timeoutMs) intezaar karo.
+  // Game start jaise actions "No connection" dikha ke wapas jaane ki jagah isse
+  // socket ready hone ka wait kar sakte hain.
+  waitForConnection(timeoutMs = 4000): Promise<boolean> {
+    return new Promise((resolve) => {
+      if (this.isConnected()) {
+        resolve(true);
+        return;
+      }
+      if (!this._connecting) this.forceReconnect();
+      const startedAt = Date.now();
+      const iv = setInterval(() => {
+        if (this.isConnected()) {
+          clearInterval(iv);
+          resolve(true);
+        } else if (Date.now() - startedAt >= timeoutMs) {
+          clearInterval(iv);
+          resolve(false);
+        }
+      }, 100);
+    });
+  }
+
   ensureAlive(timeoutMs = 2500): Promise<boolean> {
     if (this._checkingAlive) return Promise.resolve(true);
 

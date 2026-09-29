@@ -200,11 +200,14 @@ export default function useGameOverlays({ showToast, closeOtherScreensForGameSta
   }, []);
 
   const toggleMatchmaking = useCallback(
-    (mode: 'ranked' | 'unranked' = 'ranked') => {
+    async (mode: 'ranked' | 'unranked' = 'ranked') => {
       if (!networkManager.isConnected()) {
-        showToast('No connection, reconnecting...');
-        networkManager.reconnect();
-        return;
+        showToast('Connecting...');
+        const ok = await networkManager.waitForConnection(4000);
+        if (!ok) {
+          showToast('No connection, please try again.');
+          return;
+        }
       }
       if (matchmakingSearching) {
         networkManager.send({ type: 'cancel_matchmaking' });
@@ -275,16 +278,19 @@ export default function useGameOverlays({ showToast, closeOtherScreensForGameSta
   }, [toggleMatchmaking]);
 
   // ---- Bluff Court (Host/Join-by-code lobby -> live table) ----
-  const openBluffModeSelect = useCallback(() => {
+  const openBluffModeSelect = useCallback(async () => {
     setShowBattleGameSelect(false);
     if (bluffLobby) {
       setShowBluffLobbyScreen(true);
       return;
     }
     if (!networkManager.isConnected()) {
-      showToast('No connection, reconnecting...');
-      networkManager.reconnect();
-      return;
+      showToast('Connecting...');
+      const ok = await networkManager.waitForConnection(4000);
+      if (!ok) {
+        showToast('No connection, please try again.');
+        return;
+      }
     }
     fetchBluffSelfProfile();
     setShowBluffModeSelect(true);

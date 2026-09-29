@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { StyleSheet, View, useWindowDimensions } from 'react-native';
+import { AppState, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Tabs, usePathname, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
@@ -28,7 +28,7 @@ import { requestOpenProfile } from '../../shared/utils/profileOpenBus';
 import { getMyId, getMyIdAsync } from '../../shared/utils/auth';
 import axios from 'axios';
 import { API_BASE } from '../../shared/config/config';
-import { getToken } from '../../shared/services/NetworkManager';
+import networkManager, { getToken } from '../../shared/services/NetworkManager';
 import { FIELD } from '../../shared/utils/profileFields';
 import { setMyAvatarUrl } from '../../shared/utils/myAvatarBus';
 import useMyAvatarUrl from '../../shared/hooks/useMyAvatarUrl';
@@ -76,6 +76,25 @@ function tabIndexFromPath(pathname: string) {
 }
 
 export default function TabsLayout() {
+  // WebSocket app khulte hi connect karo. Pehle poori app mein kahin connect()
+  // call hi nahi hota tha - socket tab khulta tha jab koi action (game start, DM
+  // send) "not connected" milne par reconnect() chalata, isliye PEHLI baar hamesha
+  // "No connection" aata tha. onDisconnect -> reconnect (backoff ke saath), aur
+  // app background se wapas aane par socket band mila to turant dobara connect.
+  useEffect(() => {
+    if (!getToken()) return;
+    const onDisconnect = () => networkManager.reconnect();
+    if (!networkManager.isConnected() && !networkManager.isConnecting()) {
+      networkManager.connect(undefined, onDisconnect);
+    }
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active' && !networkManager.isConnected() && !networkManager.isConnecting()) {
+        networkManager.forceReconnect();
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();

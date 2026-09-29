@@ -19,6 +19,9 @@ import VerifiedBadge from '../../../shared/components/VerifiedBadge';
 import EliteBadge from '../../../shared/components/EliteBadge';
 import LongPressActionSheet from '../../../shared/components/LongPressActionSheet';
 import ReportBlockModal from './ReportBlockModal';
+import EmojiPanel from './EmojiPanel';
+import KebabMenu, { type KebabMenuHandle } from '../../../shared/components/KebabMenu';
+import usePresence from '../../../shared/hooks/usePresence';
 import TradeModal from '../../trade/components/TradeModal';
 import useAvatarImage from '../../avatar/hooks/useAvatarImage';
 import useRankCache from '../../../shared/hooks/useRankCache';
@@ -61,6 +64,37 @@ const formatBubbleTime = (iso?: string | null) => {
   return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 };
 
+const dayKey = (iso?: string | null) => {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+};
+
+const formatDayLabel = (iso?: string | null) => {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const now = new Date();
+  const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((startOf(now) - startOf(d)) / 86400000);
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Yesterday';
+  return d.toLocaleDateString([], {
+    day: 'numeric',
+    month: 'short',
+    year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+  });
+};
+
+const DatePill = ({ label }: { label: string }) => (
+  <View style={styles.datePillWrap}>
+    <View style={styles.datePill}>
+      <Text style={styles.datePillText}>{label}</Text>
+    </View>
+  </View>
+);
+
 const TypingDots = ({ color = '#d4d4d4' }: { color?: string }) => (
   <View style={styles.dotsRow}>
     {[0, 1, 2].map((i) => (
@@ -89,6 +123,10 @@ const SkeletonBubble = ({ index }: { index: number }) => (
 interface DMMessageBubbleProps {
   msg: any;
   mine: boolean;
+  dateLabel?: string | null;
+  showAvatar?: boolean;
+  avatarUri?: string | null;
+  avatarLetter?: string;
   onDelete: () => void;
   onEdit: (content: string) => void;
   onTip: () => void;
@@ -97,117 +135,144 @@ interface DMMessageBubbleProps {
   onOpenCommunity?: (slug: string, name: string) => void;
 }
 
-const DMMessageBubble = memo(({ msg, mine, onDelete, onEdit, onTip, onReply, onReport, onOpenCommunity }: DMMessageBubbleProps) => {
-  const bubbleTime = formatBubbleTime(msg.created_at);
-  const [editing, setEditing] = useState(false);
-  const [editText, setEditText] = useState(msg.content);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [menuAnchor, setMenuAnchor] = useState<LongPressPosition | null>(null);
+const DMMessageBubble = memo(
+  ({ msg, mine, dateLabel, showAvatar, avatarUri, avatarLetter, onDelete, onEdit, onTip, onReply, onReport, onOpenCommunity }: DMMessageBubbleProps) => {
+    const bubbleTime = formatBubbleTime(msg.created_at);
+    const [editing, setEditing] = useState(false);
+    const [editText, setEditText] = useState(msg.content);
+    const [menuOpen, setMenuOpen] = useState(false);
+    const [menuAnchor, setMenuAnchor] = useState<LongPressPosition | null>(null);
 
-  const { pressableProps } = useLongPress(
-    (pt) => {
-      setMenuAnchor(pt);
-      setMenuOpen(true);
-    },
-    { disabled: !msg.id || editing }
-  );
+    const { pressableProps } = useLongPress(
+      (pt) => {
+        setMenuAnchor(pt);
+        setMenuOpen(true);
+      },
+      { disabled: !msg.id || editing }
+    );
 
-  const startEdit = () => {
-    setEditText(msg.content);
-    setEditing(true);
-  };
-  const cancelEdit = () => setEditing(false);
-  const saveEdit = () => {
-    const trimmed = (editText || '').trim();
-    if (!trimmed || trimmed === msg.content) {
+    const startEdit = () => {
+      setEditText(msg.content);
+      setEditing(true);
+    };
+    const cancelEdit = () => setEditing(false);
+    const saveEdit = () => {
+      const trimmed = (editText || '').trim();
+      if (!trimmed || trimmed === msg.content) {
+        setEditing(false);
+        return;
+      }
+      onEdit(trimmed);
       setEditing(false);
-      return;
-    }
-    onEdit(trimmed);
-    setEditing(false);
-  };
+    };
 
-  if (msg.isTip) {
+    if (msg.isTip) {
+      return (
+        <View>
+          {!!dateLabel && <DatePill label={dateLabel} />}
+          <View style={styles.tipWrap}>
+            <View style={styles.tipPill}>
+              <Ionicons name="cash-outline" size={11} color="#fde047" />
+              <Text style={styles.tipText}>{msg.content}</Text>
+            </View>
+          </View>
+        </View>
+      );
+    }
+
     return (
-      <View style={styles.tipWrap}>
-        <View style={styles.tipPill}>
-          <Ionicons name="cash-outline" size={11} color="#fde047" />
-          <Text style={styles.tipText}>{msg.content}</Text>
+      <View>
+        {!!dateLabel && <DatePill label={dateLabel} />}
+        <View style={styles.msgRow}>
+          {!mine && (
+            <View style={styles.sideAvatarSlot}>
+              {showAvatar && (
+                <View style={styles.sideAvatar}>
+                  {avatarUri ? (
+                    <Image source={{ uri: avatarUri }} style={styles.fill} />
+                  ) : (
+                    <Text style={styles.sideAvatarText}>{avatarLetter || '?'}</Text>
+                  )}
+                </View>
+              )}
+            </View>
+          )}
+
+          <View style={styles.flex}>
+            <SwipeableBubble align={mine ? 'end' : 'start'} onReply={onReply}>
+              <View style={[styles.msgCol, mine ? styles.alignEnd : styles.alignStart]}>
+                {editing ? (
+                  <View style={styles.editWrap}>
+                    <TextInput
+                      autoFocus
+                      multiline
+                      value={editText}
+                      onChangeText={setEditText}
+                      style={styles.editInput}
+                      placeholderTextColor="#737373"
+                    />
+                    <View style={styles.editBtns}>
+                      <Pressable onPress={cancelEdit} style={[styles.editBtn, { backgroundColor: '#262626' }]}>
+                        <Ionicons name="close" size={13} color="#ffffff" />
+                        <Text style={styles.editBtnText}>Cancel</Text>
+                      </Pressable>
+                      <Pressable onPress={saveEdit} style={[styles.editBtn, { backgroundColor: '#4f46e5' }]}>
+                        <Ionicons name="checkmark" size={13} color="#ffffff" />
+                        <Text style={styles.editBtnText}>Save</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                ) : (
+                  <Pressable
+                    {...pressableProps}
+                    style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs]}
+                  >
+                    <Text style={[styles.bubbleText, mine && styles.bubbleTextMine]}>
+                      {renderWithMentions(msg.content, null, onOpenCommunity)}
+                    </Text>
+
+                    {/* Time + status bubble ke ANDAR, neeche-right (Telegram/WhatsApp jaisa) */}
+                    <View style={styles.metaRow}>
+                      {msg.edited && <Text style={[styles.metaText, mine && styles.metaTextMine]}>edited</Text>}
+                      {!!bubbleTime && <Text style={[styles.metaText, mine && styles.metaTextMine]}>{bubbleTime}</Text>}
+                      {mine &&
+                        (!msg.id ? (
+                          <Ionicons name="time-outline" size={12} color="#6b7280" />
+                        ) : msg.seen ? (
+                          <Ionicons name="checkmark-done-outline" size={14} color="#2563eb" />
+                        ) : (
+                          <Ionicons name="checkmark" size={13} color="#6b7280" />
+                        ))}
+                    </View>
+                  </Pressable>
+                )}
+              </View>
+
+              <LongPressActionSheet
+                open={menuOpen}
+                anchor={menuAnchor}
+                onClose={() => setMenuOpen(false)}
+                items={
+                  mine
+                    ? [
+                        { label: 'Reply', icon: <Ionicons name="arrow-undo-outline" size={16} color="#ffffff" />, onClick: onReply },
+                        { label: 'Edit', icon: <Ionicons name="pencil-outline" size={16} color="#ffffff" />, onClick: startEdit },
+                        { label: 'Delete', icon: <Ionicons name="trash-outline" size={16} color="#f87171" />, danger: true, onClick: onDelete },
+                      ]
+                    : [
+                        { label: 'Reply', icon: <Ionicons name="arrow-undo-outline" size={16} color="#ffffff" />, onClick: onReply },
+                        { label: 'Tip', icon: <Ionicons name="cash-outline" size={16} color="#ffffff" />, onClick: onTip },
+                        { label: 'Report', icon: <Ionicons name="warning-outline" size={16} color="#f87171" />, danger: true, onClick: onReport },
+                      ]
+                }
+              />
+            </SwipeableBubble>
+          </View>
         </View>
       </View>
     );
   }
-
-  return (
-    <SwipeableBubble align={mine ? 'end' : 'start'} onReply={onReply}>
-      <View style={[styles.msgCol, mine ? styles.alignEnd : styles.alignStart]}>
-        {editing ? (
-          <View style={styles.editWrap}>
-            <TextInput
-              autoFocus
-              multiline
-              value={editText}
-              onChangeText={setEditText}
-              style={styles.editInput}
-              placeholderTextColor="#737373"
-            />
-            <View style={styles.editBtns}>
-              <Pressable onPress={cancelEdit} style={[styles.editBtn, { backgroundColor: '#262626' }]}>
-                <Ionicons name="close" size={13} color="#ffffff" />
-                <Text style={styles.editBtnText}>Cancel</Text>
-              </Pressable>
-              <Pressable onPress={saveEdit} style={[styles.editBtn, { backgroundColor: '#4f46e5' }]}>
-                <Ionicons name="checkmark" size={13} color="#ffffff" />
-                <Text style={styles.editBtnText}>Save</Text>
-              </Pressable>
-            </View>
-          </View>
-        ) : (
-          <Pressable
-            {...pressableProps}
-            style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs]}
-          >
-            <Text style={[styles.bubbleText, mine && styles.bubbleTextMine]}>{renderWithMentions(msg.content, null, onOpenCommunity)}</Text>
-            {msg.edited && <Text style={[styles.editedText, mine && styles.editedTextMine]}>edited</Text>}
-
-            {mine && (
-              <View style={styles.statusIcon}>
-                {!msg.id ? (
-                  <Ionicons name="time-outline" size={11} color="#000000" />
-                ) : msg.seen ? (
-                  <Ionicons name="checkmark-done-outline" size={12} color="#000000" />
-                ) : (
-                  <Ionicons name="checkmark" size={12} color="#000000" />
-                )}
-              </View>
-            )}
-          </Pressable>
-        )}
-
-        {bubbleTime && !editing && <Text style={styles.timeText}>{bubbleTime}</Text>}
-      </View>
-
-      <LongPressActionSheet
-        open={menuOpen}
-        anchor={menuAnchor}
-        onClose={() => setMenuOpen(false)}
-        items={
-          mine
-            ? [
-                { label: 'Reply', icon: <Ionicons name="arrow-undo-outline" size={16} color="#ffffff" />, onClick: onReply },
-                { label: 'Edit', icon: <Ionicons name="pencil-outline" size={16} color="#ffffff" />, onClick: startEdit },
-                { label: 'Delete', icon: <Ionicons name="trash-outline" size={16} color="#f87171" />, danger: true, onClick: onDelete },
-              ]
-            : [
-                { label: 'Reply', icon: <Ionicons name="arrow-undo-outline" size={16} color="#ffffff" />, onClick: onReply },
-                { label: 'Tip', icon: <Ionicons name="cash-outline" size={16} color="#ffffff" />, onClick: onTip },
-                { label: 'Report', icon: <Ionicons name="warning-outline" size={16} color="#f87171" />, danger: true, onClick: onReport },
-              ]
-        }
-      />
-    </SwipeableBubble>
-  );
-});
+);
 DMMessageBubble.displayName = 'DMMessageBubble';
 
 interface DMChatWindowProps {
@@ -290,6 +355,17 @@ const DMChatWindow = ({
   // Inbox wale avatar_url/avatar_version se SYNC resolve (cache) - header me pehle
   // letter/default dikh ke baad me image nahi badlegi.
   const headerAvatarSrc = useAvatarImage(dmTargetId, selectedDM?.avatar_url, selectedDM?.avatar_version);
+  const isOnline = usePresence(dmTargetId);
+
+  const inputRef = useRef<TextInput>(null);
+  const kebabRef = useRef<KebabMenuHandle>(null);
+  // Cursor position (null = abhi pata nahi -> emoji end me jayega).
+  const selectionRef = useRef<{ start: number; end: number } | null>(null);
+  const [forcedSel, setForcedSel] = useState<{ start: number; end: number } | undefined>(undefined);
+  const kbHeightRef = useRef(300);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const closeEmoji = useStableCallback(() => setEmojiOpen(false));
+  useBackButtonHandler(emojiOpen, closeEmoji);
 
   // Default behaviour: keyboard khulne par poori screen upar push hoti hai
   // (KeyboardAvoidingView). Keyboard khula ho to bottom safe-area padding
@@ -298,8 +374,11 @@ const DMChatWindow = ({
   useEffect(() => {
     const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const a = Keyboard.addListener(showEvt, () => {
+    const a = Keyboard.addListener(showEvt, (e: any) => {
+      const h = e?.endCoordinates?.height;
+      if (h && h > 150) kbHeightRef.current = h;
       setKbOpen(true);
+      setEmojiOpen(false);
       requestAnimationFrame(() => listRef.current?.scrollToOffset({ offset: 0, animated: true }));
     });
     const b = Keyboard.addListener(hideEvt, () => setKbOpen(false));
@@ -321,6 +400,8 @@ const DMChatWindow = ({
   // Conversation badalne par input reset (ya User Store se aaya draft dikhao).
   useEffect(() => {
     setMsgInput(initialDraft || '');
+    selectionRef.current = null;
+    setEmojiOpen(false);
     userScrolledRef.current = false;
     dmTypingSentRef.current = false;
     if (dmTypingTimeoutRef.current) {
@@ -365,7 +446,52 @@ const DMChatWindow = ({
     }
     onSend(msgInput);
     setMsgInput('');
+    selectionRef.current = null;
   };
+
+  // ---- Emoji panel (keyboard ki jagah) ----
+  const toggleEmoji = () => {
+    if (emojiOpen) {
+      setEmojiOpen(false);
+      inputRef.current?.focus();
+    } else {
+      setEmojiOpen(true);
+      Keyboard.dismiss();
+    }
+  };
+
+  const insertEmoji = (emoji: string) => {
+    const sel = selectionRef.current;
+    const len = msgInput.length;
+    const start = sel ? Math.min(sel.start, len) : len;
+    const end = sel ? Math.min(sel.end, len) : len;
+    const next = msgInput.slice(0, start) + emoji + msgInput.slice(end);
+    handleChangeMsgInput(next);
+    const pos = start + emoji.length;
+    selectionRef.current = { start: pos, end: pos };
+    setForcedSel({ start: pos, end: pos });
+  };
+
+  const backspaceEmoji = () => {
+    const sel = selectionRef.current;
+    const len = msgInput.length;
+    const start = sel ? Math.min(sel.start, len) : len;
+    const end = sel ? Math.min(sel.end, len) : len;
+    let before = msgInput.slice(0, start);
+    const after = msgInput.slice(end);
+    if (start === end) {
+      if (!before) return;
+      before = before.replace(/[\uFE0F\u200D]+$/, '');
+      const chars = Array.from(before);
+      chars.pop();
+      before = chars.join('').replace(/[\uFE0F\u200D]+$/, '');
+    }
+    handleChangeMsgInput(before + after);
+    selectionRef.current = { start: before.length, end: before.length };
+    setForcedSel({ start: before.length, end: before.length });
+  };
+
+  const comingSoon = (what: string) => showActionToast(`${what} is coming soon.`);
 
   const handleReply = useCallback((username?: string) => {
     setMsgInput((prev) => `${prev}@${username} `);
@@ -421,13 +547,26 @@ const DMChatWindow = ({
     onTradeRequest?.(selectedDM);
   };
 
-  const renderItem = ({ item: msg }: { item: any }) => {
+  const renderItem = ({ item: msg, index }: { item: any; index: number }) => {
     const mine = String(msg.sender_id) === String(getMyId());
     const username = mine ? 'You' : selectedDM.username;
+
+    // inverted data: index-1 = newer, index+1 = older
+    const older = invertedData[index + 1];
+    const newer = invertedData[index - 1];
+    const thisDay = dayKey(msg.created_at);
+    const showDate = !!thisDay && (older ? dayKey(older.created_at) !== thisDay : !hasMoreMessages);
+    const dateLabel = showDate ? formatDayLabel(msg.created_at) : null;
+    const showAvatar = !mine && (!newer || newer.isTip || String(newer.sender_id) !== String(msg.sender_id));
+
     return (
       <DMMessageBubble
         msg={msg}
         mine={mine}
+        dateLabel={dateLabel}
+        showAvatar={showAvatar}
+        avatarUri={headerAvatar}
+        avatarLetter={(selectedDM.username || '?').charAt(0).toUpperCase()}
         onDelete={() => onDeleteMessage(msg.id)}
         onEdit={(newContent) => onEditMessage(msg.id, newContent)}
         onTip={() => onTip({ id: msg.sender_id, username: selectedDM.username }, null)}
@@ -442,47 +581,76 @@ const DMChatWindow = ({
     // Slide/animation ab parent (DMOverlayScreen -> ChatSlide) karta hai -
     // yahan koi fade/translate nahi, warna blink hota hai.
     <View style={[styles.screen, { zIndex, elevation: 20 }]}>
-      <KeyboardAvoidingView style={styles.flex} behavior="padding">
+      <KeyboardAvoidingView style={styles.flex} behavior="padding" enabled={!emojiOpen}>
         {/* Header */}
-        <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
-          <Pressable onPress={onClose} style={styles.closeBtn} hitSlop={8}>
-            <Ionicons name="arrow-back" size={16} color="#ffffff" />
-            <Text style={styles.closeBtnText}>Close</Text>
+        <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+          <Pressable onPress={onClose} style={styles.backBtn} hitSlop={10}>
+            <Ionicons name="arrow-back" size={26} color="#ffffff" />
           </Pressable>
 
           <Pressable onPress={() => onOpenProfile?.(selectedDM)} style={styles.headerUser}>
-            <View style={styles.headerAvatar}>
-              {headerAvatar ? (
-                <Image source={{ uri: headerAvatar }} style={styles.fill} />
-              ) : (
-                <Text style={styles.headerAvatarText}>{(selectedDM.username || '?').charAt(0).toUpperCase()}</Text>
+            <View style={styles.headerAvatarWrap}>
+              <View style={styles.headerAvatar}>
+                {headerAvatar ? (
+                  <Image source={{ uri: headerAvatar }} style={styles.fill} />
+                ) : (
+                  <Text style={styles.headerAvatarText}>{(selectedDM.username || '?').charAt(0).toUpperCase()}</Text>
+                )}
+              </View>
+              {isOnline !== undefined && (
+                <View style={[styles.headerDot, { backgroundColor: isOnline ? '#22c55e' : '#6b7280' }]} />
               )}
             </View>
-            <Text style={styles.headerName} numberOfLines={1}>
-              {selectedDM.username}
-            </Text>
-            {headerVerified && <VerifiedBadge size="md" />}
-            {headerElite && <EliteBadge size="md" />}
+            <View style={styles.headerTextCol}>
+              <View style={styles.nameRow}>
+                <Text style={styles.headerName} numberOfLines={1}>
+                  {selectedDM.username}
+                </Text>
+                {headerVerified && <VerifiedBadge size="md" />}
+                {headerElite && <EliteBadge size="md" />}
+              </View>
+              {isOnline !== undefined && <Text style={styles.headerSub}>{isOnline ? 'Online' : 'Offline'}</Text>}
+            </View>
           </Pressable>
 
-          <Pressable
-            onPress={handleTradeButtonClick}
-            disabled={!!waitingForThisDM}
-            style={[
-              styles.tradeBtn,
-              tradeForThisDM ? styles.tradeBtnActive : styles.tradeBtnIdle,
-              waitingForThisDM && { opacity: 0.7 },
-            ]}
-          >
-            {waitingForThisDM ? (
-              <Text style={[styles.tradeBtnText, { color: '#a3a3a3' }]}>Waiting...</Text>
-            ) : (
-              <>
-                <Ionicons name="refresh-outline" size={12} color="#ffffff" />
-                <Text style={styles.tradeBtnText}>{tradeForThisDM ? (tradePanelExpanded ? 'Hide' : 'Show') : 'Trade'}</Text>
-              </>
-            )}
-          </Pressable>
+          <View style={styles.headerActions}>
+            {/* Call - placeholder */}
+            <Pressable onPress={() => comingSoon('Calling')} style={styles.iconBtn} hitSlop={6}>
+              <Ionicons name="call-outline" size={22} color="#ffffff" />
+            </Pressable>
+
+            {/* Trade (video-call button ki jagah) */}
+            <Pressable
+              onPress={handleTradeButtonClick}
+              disabled={!!waitingForThisDM}
+              style={[styles.iconBtn, tradeForThisDM && styles.iconBtnActive, waitingForThisDM && { opacity: 0.5 }]}
+              hitSlop={6}
+            >
+              <Ionicons name={waitingForThisDM ? 'hourglass-outline' : 'swap-horizontal'} size={24} color="#ffffff" />
+            </Pressable>
+
+            <Pressable onPress={() => kebabRef.current?.open()} style={styles.iconBtn} hitSlop={6}>
+              <Ionicons name="ellipsis-vertical" size={22} color="#ffffff" />
+            </Pressable>
+            <KebabMenu
+              ref={kebabRef}
+              hideButton
+              items={[
+                {
+                  label: 'Report user',
+                  icon: <Ionicons name="warning-outline" size={16} color="#f87171" />,
+                  danger: true,
+                  onClick: () => setReportState({ mode: 'report', target: { id: dmTargetId, username: selectedDM.username } }),
+                },
+                {
+                  label: 'Block user',
+                  icon: <Ionicons name="ban-outline" size={16} color="#f87171" />,
+                  danger: true,
+                  onClick: () => setReportState({ mode: 'block', target: { id: dmTargetId, username: selectedDM.username } }),
+                },
+              ]}
+            />
+          </View>
         </View>
 
         {waitingForThisDM && (
@@ -568,7 +736,7 @@ const DMChatWindow = ({
         )}
 
         {/* Input area */}
-        <View style={[styles.inputRow, { paddingBottom: kbOpen ? 10 : insets.bottom + 12 }]}>
+        <View style={[styles.inputRow, { paddingBottom: kbOpen || emojiOpen ? 10 : insets.bottom + 12 }]}>
           {requestLock === 'pending_incoming' ? (
             <View style={styles.reqRow}>
               <Text style={styles.reqText}>{selectedDM.username} sent you a message request.</Text>
@@ -593,22 +761,49 @@ const DMChatWindow = ({
             </View>
           ) : (
             <>
-              <TextInput
-                style={styles.input}
-                placeholder="Type a message..."
-                placeholderTextColor="#6e6e6e"
-                value={msgInput}
-                onChangeText={handleChangeMsgInput}
-                onSubmitEditing={handleSend}
-                returnKeyType="send"
-                blurOnSubmit={false}
-              />
-              <Pressable onPress={handleSend} style={styles.sendBtn}>
-                <Text style={styles.sendBtnText}>Send</Text>
+              {/* + button - placeholder */}
+              <Pressable onPress={() => comingSoon('Attachments')} style={styles.plusBtn}>
+                <Ionicons name="add" size={28} color="#d4d4d4" />
+              </Pressable>
+
+              <View style={styles.inputWrap}>
+                <TextInput
+                  ref={inputRef}
+                  style={styles.input}
+                  placeholder="Type a message..."
+                  placeholderTextColor="#6e6e6e"
+                  value={msgInput}
+                  onChangeText={handleChangeMsgInput}
+                  // Enter = NEW LINE (Telegram jaisa), keyboard par send button nahi.
+                  multiline
+                  submitBehavior="newline"
+                  onFocus={() => setEmojiOpen(false)}
+                  selection={forcedSel}
+                  onSelectionChange={(e) => {
+                    selectionRef.current = e.nativeEvent.selection;
+                    if (forcedSel) setForcedSel(undefined);
+                  }}
+                />
+                <Pressable onPress={toggleEmoji} style={styles.emojiBtn} hitSlop={6}>
+                  <Ionicons name={emojiOpen ? 'keypad-outline' : 'happy-outline'} size={26} color="#a3a3a3" />
+                </Pressable>
+              </View>
+
+              <Pressable onPress={handleSend} style={[styles.sendBtn, !msgInput.trim() && { opacity: 0.6 }]}>
+                <Ionicons name="send" size={20} color="#ffffff" />
               </Pressable>
             </>
           )}
         </View>
+
+        {emojiOpen && (
+          <EmojiPanel
+            height={Math.max(260, kbHeightRef.current)}
+            bottomInset={insets.bottom}
+            onPick={insertEmoji}
+            onBackspace={backspaceEmoji}
+          />
+        )}
 
         {!!actionToast && (
           <View style={[styles.toast, { top: insets.top + 64 }]} pointerEvents="none">
@@ -620,7 +815,7 @@ const DMChatWindow = ({
           mode={reportState?.mode}
           target={reportState?.target || null}
           onClose={() => setReportState(null)}
-          onDone={() => showActionToast('Report submitted, thank you.')}
+          onDone={(m: any) => showActionToast(m === 'block' ? 'User blocked.' : 'Report submitted, thank you.')}
         />
       </KeyboardAvoidingView>
     </View>
@@ -632,23 +827,70 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   fill: { width: '100%', height: '100%' },
   header: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-    backgroundColor: '#161616',
+    paddingHorizontal: 12,
+    paddingBottom: 10,
+    backgroundColor: '#0a0a0a',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     borderBottomWidth: 1,
-    borderBottomColor: '#262626',
-    gap: 8,
+    borderBottomColor: '#1f1f1f',
+    gap: 6,
   },
-  closeBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  closeBtnText: { color: '#ffffff' },
-  headerUser: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, justifyContent: 'center' },
-  headerAvatar: {
+  backBtn: { padding: 4 },
+  headerAvatarWrap: { width: 42, height: 42 },
+  headerDot: {
+    position: 'absolute',
+    right: -1,
+    bottom: -1,
+    width: 13,
+    height: 13,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: '#0a0a0a',
+  },
+  headerTextCol: { flexShrink: 1, minWidth: 0 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  headerSub: { color: '#a3a3a3', fontSize: 13, marginTop: 1 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  iconBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  iconBtnActive: { backgroundColor: '#4f46e5' },
+  datePillWrap: { alignItems: 'center', marginVertical: 6 },
+  datePill: { backgroundColor: '#1a1a1a', borderRadius: 999, paddingHorizontal: 14, paddingVertical: 5 },
+  datePillText: { color: '#a3a3a3', fontSize: 12, fontWeight: '600' },
+  msgRow: { flexDirection: 'row', alignItems: 'flex-end' },
+  sideAvatarSlot: { width: 32, marginRight: 8 },
+  sideAvatar: {
     width: 32,
     height: 32,
     borderRadius: 16,
+    backgroundColor: '#4f46e5',
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sideAvatarText: { color: '#ffffff', fontWeight: '700', fontSize: 13 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-end', gap: 4, marginTop: 2 },
+  metaText: { fontSize: 11, color: '#9a9a9a' },
+  metaTextMine: { color: 'rgba(0,0,0,0.5)' },
+  plusBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#161616', alignItems: 'center', justifyContent: 'center' },
+  inputWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    backgroundColor: '#161616',
+    borderWidth: 1,
+    borderColor: '#262626',
+    borderRadius: 24,
+    minHeight: 44,
+  },
+  emojiBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  closeBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  closeBtnText: { color: '#ffffff' },
+  headerUser: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 },
+  headerAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     backgroundColor: '#4f46e5',
     overflow: 'hidden',
     alignItems: 'center',
@@ -701,8 +943,8 @@ const styles = StyleSheet.create({
   msgCol: { flexShrink: 1, maxWidth: '100%' },
   alignEnd: { alignItems: 'flex-end' },
   alignStart: { alignItems: 'flex-start' },
-  bubble: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, flexShrink: 1 },
-  bubbleMine: { backgroundColor: '#e5e5e5', borderBottomRightRadius: 2, paddingBottom: 20, paddingRight: 56 },
+  bubble: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 6, borderRadius: 18, flexShrink: 1 },
+  bubbleMine: { backgroundColor: '#e5e5e5', borderBottomRightRadius: 4 },
   bubbleTheirs: { backgroundColor: '#262626', borderBottomLeftRadius: 2 },
   bubbleText: { color: '#ffffff', fontSize: 14, lineHeight: 19, flexShrink: 1 },
   bubbleTextMine: { color: '#000000' },
@@ -725,18 +967,18 @@ const styles = StyleSheet.create({
   editBtns: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8 },
   editBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
   editBtnText: { color: '#ffffff', fontSize: 12, fontWeight: '700' },
-  inputRow: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 12, flexDirection: 'row', gap: 8, alignItems: 'center' },
+  inputRow: { paddingHorizontal: 12, paddingTop: 10, paddingBottom: 12, flexDirection: 'row', gap: 8, alignItems: 'flex-end' },
   input: {
     flex: 1,
-    backgroundColor: '#0a0a0a',
-    borderWidth: 1,
-    borderColor: '#262626',
-    borderRadius: 999,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
     color: '#ffffff',
+    fontSize: 16,
+    paddingLeft: 16,
+    paddingTop: 10,
+    paddingBottom: 10,
+    maxHeight: 120,
+    textAlignVertical: 'center',
   },
-  sendBtn: { backgroundColor: '#4f46e5', paddingHorizontal: 24, paddingVertical: 8, borderRadius: 999, justifyContent: 'center' },
+  sendBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#4f46e5', alignItems: 'center', justifyContent: 'center' },
   sendBtnText: { color: '#ffffff', fontWeight: '700' },
   reqRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
   reqText: { flex: 1, fontSize: 12, color: '#a3a3a3' },

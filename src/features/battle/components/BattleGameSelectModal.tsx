@@ -1,5 +1,6 @@
 import React, { memo, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import useBackButtonHandler from '../../../shared/hooks/useBackButtonHandler';
 import useTopZIndex from '../../../shared/hooks/useTopZIndex';
@@ -72,6 +73,7 @@ const BattleGameSelectModal = ({
   onCancelMatchmaking,
 }: BattleGameSelectModalProps) => {
   const __z = useTopZIndex(show);
+  const insets = useSafeAreaInsets();
   const [elapsed, setElapsed] = useState(0);
 
   useBackButtonHandler(show && !matchmakingSearching, onClose);
@@ -98,7 +100,7 @@ const BattleGameSelectModal = ({
   };
 
   return (
-    <View style={[styles.container, { zIndex: __z }]}>
+    <View style={[styles.container, { zIndex: __z, paddingTop: insets.top }]}>
       <View style={styles.header}>
         <View style={styles.headerRow}>
           <View style={styles.headerIconBox}>

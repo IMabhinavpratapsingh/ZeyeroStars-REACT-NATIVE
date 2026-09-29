@@ -1,6 +1,7 @@
 import React, { memo, useState } from 'react';
 import * as Clipboard from 'expo-clipboard';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import useBackButtonHandler from '../../../shared/hooks/useBackButtonHandler';
 import useTopZIndex from '../../../shared/hooks/useTopZIndex';
@@ -38,6 +39,7 @@ interface BluffLobbyScreenProps {
 const BluffLobbyScreen = ({ show, lobby, myId, onMinimize, onLeave, onStart }: BluffLobbyScreenProps) => {
   const [copied, setCopied] = useState(false);
   const __z = useTopZIndex(show);
+  const insets = useSafeAreaInsets();
 
   useBackButtonHandler(show, onMinimize);
 
@@ -45,7 +47,7 @@ const BluffLobbyScreen = ({ show, lobby, myId, onMinimize, onLeave, onStart }: B
 
   if (!lobby) {
     return (
-      <View style={[styles.container, { zIndex: __z }, styles.centered]}>
+      <View style={[styles.container, { zIndex: __z, paddingTop: insets.top }, styles.centered]}>
         <ActivityIndicator size="large" color="#f6bc7a" />
         <Text style={styles.loadingText}>Setting up the table…</Text>
       </View>
@@ -70,7 +72,7 @@ const BluffLobbyScreen = ({ show, lobby, myId, onMinimize, onLeave, onStart }: B
   };
 
   return (
-    <View style={[styles.container, { zIndex: __z }]}>
+    <View style={[styles.container, { zIndex: __z, paddingTop: insets.top }]}>
       <View style={styles.topBar}>
         <Pressable onPress={onMinimize} style={styles.pillButton}>
           <Ionicons name="chevron-down" size={14} color="#c2c2c2" />

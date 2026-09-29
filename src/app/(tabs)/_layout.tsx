@@ -34,7 +34,7 @@ import { setMyAvatarUrl } from '../../shared/utils/myAvatarBus';
 import useMyAvatarUrl from '../../shared/hooks/useMyAvatarUrl';
 import { getCommunityBySlug } from '../../features/communities/services/communitiesApi';
 import { showAlert } from '../../shared/utils/alertBus';
-import { subscribeOpenOverlay, requestOpenDM } from '../../shared/utils/navOverlayBus';
+import { subscribeOpenOverlay, requestOpenDM, subscribeOpenRoom } from '../../shared/utils/navOverlayBus';
 import { subscribeOpenQuickActions } from '../../shared/utils/quickActionsBus';
 import { requestFeedScrollTopReload } from '../../shared/utils/feedScrollBus';
 import { subscribeOpenCommunity, requestOpenCommunityBySlug, requestOpenCommunityById } from '../../shared/utils/communityOpenBus';
@@ -265,6 +265,8 @@ export default function TabsLayout() {
   // (jo pehle `router.push('/(tabs)/rooms')`/`.../dm` karti thi) ab is
   // bus se overlay khulwaane ka event bhejti hain, yahan sunte hain.
   useEffect(() => subscribeOpenOverlay((kind: string) => (kind === 'rooms' ? openRooms() : openDM())), [openRooms, openDM]);
+  // RoomsStrip se kisi room par tap -> Rooms overlay khol do (join RoomsOverlayScreen khud karega).
+  useEffect(() => subscribeOpenRoom(() => openRooms()), [openRooms]);
 
   // PostDetailModal jaisa true-fullscreen overlay khula ho to Header aur
   // BottomNav dono hide - post pura screen le, neeche sirf apna comment

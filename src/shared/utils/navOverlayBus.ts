@@ -31,3 +31,34 @@ export function requestOpenRooms(): void {
 export function requestOpenDM(): void {
   listeners.forEach((l) => l('dm'));
 }
+
+// --- Strip se seedha kisi room mein jaana (Your Room / active room circle) ---
+// Dashboard ka apna useRoomState instance kisi room-screen se juda nahi hai,
+// isliye tap par Rooms overlay khulta hai aur wahi (RoomsOverlayScreen ka
+// roomState) room join karta hai.
+let roomListeners: ((room: any) => void)[] = [];
+
+export function subscribeOpenRoom(listener: (room: any) => void): () => void {
+  roomListeners.push(listener);
+  return () => {
+    roomListeners = roomListeners.filter((l) => l !== listener);
+  };
+}
+
+export function requestOpenRoom(room: any): void {
+  roomListeners.forEach((l) => l(room));
+}
+
+// --- "Mera room" badla (create/rename/icon save) -> strip dobara fetch kare ---
+let myRoomListeners: (() => void)[] = [];
+
+export function subscribeMyRoomChanged(listener: () => void): () => void {
+  myRoomListeners.push(listener);
+  return () => {
+    myRoomListeners = myRoomListeners.filter((l) => l !== listener);
+  };
+}
+
+export function notifyMyRoomChanged(): void {
+  myRoomListeners.forEach((l) => l());
+}

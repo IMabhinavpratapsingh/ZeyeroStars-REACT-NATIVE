@@ -14,7 +14,7 @@ import useRoomState from '../../features/dashboard/hooks/useRoomState';
 import { listMyCommunities } from '../../features/communities/services/communitiesApi';
 import type { PickerCommunity as LockedCommunity } from '../../features/feed/components/CreatePostModal';
 import { showAlert } from '../../shared/utils/alertBus';
-import { requestOpenRooms } from '../../shared/utils/navOverlayBus';
+import { requestOpenRooms, requestOpenRoom, subscribeMyRoomChanged } from '../../shared/utils/navOverlayBus';
 import { subscribeFeedScrollTopReload } from '../../shared/utils/feedScrollBus';
 import { requestOpenCommunityById, requestOpenCommunityBySlug } from '../../shared/utils/communityOpenBus';
 import { requestOpenProfile } from '../../shared/utils/profileOpenBus';
@@ -49,7 +49,7 @@ export default function DashboardScreen() {
   // system (chat/gifting waghera) abhi is Home wiring ka scope nahi hai,
   // isliye no-op stubs (jaisa rooms.tsx tab bhi apna khud ka isPrivileged
   // self-profile-fetch banata hai, filhaal simple false).
-  const { myRoom, myRoomLoading, roomsStripRefreshKey, openRoom } = useRoomState({
+  const { myRoom, myRoomLoading, roomsStripRefreshKey, fetchMyRoom } = useRoomState({
     isPrivileged: () => false,
     closeOtherNavPanels: () => {},
     beginScreenLoading: () => {},
@@ -74,6 +74,14 @@ export default function DashboardScreen() {
   // OR kar dete hain (jo bhi pehle badle, RoomsStrip refetch karega).
   const [roomsPullRefreshTick, setRoomsPullRefreshTick] = useState(0);
 
+  // "Your Room" card - mount par, pull-to-refresh par aur room create/save
+  // hone par apna room dobara fetch (pehle kabhi call hi nahi hota tha, isliye
+  // myRoomLoading true hi atka rehta tha aur card nahi dikhta tha).
+  useEffect(() => {
+    fetchMyRoom();
+  }, [fetchMyRoom, roomsStripRefreshKey, roomsPullRefreshTick]);
+  useEffect(() => subscribeMyRoomChanged(fetchMyRoom), [fetchMyRoom]);
+
   // Home button ka DOUBLE TAP (BottomNav, `(tabs)/_layout.tsx` ke andar)
   // "scroll feed top par + reload" chahta hai, Instagram jaisa - us button
   // ka parent alag hai isliye ref seedha nahi mil sakta, `feedScrollBus`
@@ -88,8 +96,15 @@ export default function DashboardScreen() {
   useEffect(
     () =>
       subscribeFeedScrollTopReload(() => {
+        // Pehle top par smooth scroll, phir (scroll khatam hone ke baad) refresh -
+        // warna refresh se posts replace hote waqt chalta hua scroll beech mein
+        // ruk jaata tha. RoomsStrip ab list ka header hai, isliye woh bhi top
+        // par aa jaata hai; use bhi saath refresh kar do.
         feedListRef.current?.scrollToOffset({ offset: 0, animated: true });
-        refreshFeed();
+        setTimeout(() => {
+          refreshFeed();
+          setRoomsPullRefreshTick((t) => t + 1);
+        }, 350);
       }),
     [refreshFeed]
   );
@@ -174,16 +189,18 @@ export default function DashboardScreen() {
 
   return (
     <View style={styles.screen}>
-      <RoomsStrip
-        myRoom={myRoom}
-        myRoomLoading={myRoomLoading}
-        onOpenRoom={(room) => openRoom(room as any)}
-        onOpenRooms={() => requestOpenRooms()}
-        onOpenRoomDirect={(room) => openRoom(room as any)}
-        refreshSignal={`${roomsStripRefreshKey}:${roomsPullRefreshTick}`}
-      />
       <FeedList
         listRef={feedListRef}
+        listHeader={
+          <RoomsStrip
+            myRoom={myRoom}
+            myRoomLoading={myRoomLoading}
+            onOpenRoom={(room) => requestOpenRoom(room)}
+            onOpenRooms={() => requestOpenRooms()}
+            onOpenRoomDirect={(room) => requestOpenRoom(room)}
+            refreshSignal={`${roomsStripRefreshKey}:${roomsPullRefreshTick}`}
+          />
+        }
         posts={posts}
         loading={loading}
         loadingMore={loadingMore}

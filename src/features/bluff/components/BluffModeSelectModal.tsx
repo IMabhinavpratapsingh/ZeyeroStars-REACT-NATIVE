@@ -1,5 +1,6 @@
 import React, { memo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import useBackButtonHandler from '../../../shared/hooks/useBackButtonHandler';
 import useTopZIndex from '../../../shared/hooks/useTopZIndex';
@@ -21,6 +22,7 @@ type ViewMode = 'menu' | 'host' | 'join';
 
 const BluffModeSelectModal = ({ show, onClose, onHost, onJoinCode, onQuickJoin }: BluffModeSelectModalProps) => {
   const __z = useTopZIndex(show);
+  const insets = useSafeAreaInsets();
   const [view, setView] = useState<ViewMode>('menu');
   const [isPublic, setIsPublic] = useState(true);
   const [code, setCode] = useState('');
@@ -64,7 +66,7 @@ const BluffModeSelectModal = ({ show, onClose, onHost, onJoinCode, onQuickJoin }
   };
 
   return (
-    <View style={[styles.container, { zIndex: __z }]}>
+    <View style={[styles.container, { zIndex: __z, paddingTop: insets.top }]}>
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           {view !== 'menu' && (

@@ -1,5 +1,5 @@
 import { memo, useCallback } from 'react';
-import type { Ref } from 'react';
+import type { ReactNode, Ref } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -296,6 +296,10 @@ interface FeedListProps extends PostCardCallbacks {
   // chahiye - koi forwardRef nahi, bas ye ref FlatList par attach kar
   // dete hain (FeedList khud ek plain function component hai).
   listRef?: Ref<FlatList<FeedPost>>;
+  // Feed ke saath hi scroll hone wala header (Home par RoomsStrip). List ke
+  // paddingHorizontal (16) ko cancel karke edge-to-edge lagta hai, kyunki
+  // strip ka apna 16px padding hai. Loading/empty state mein bhi dikhta hai.
+  listHeader?: ReactNode;
 }
 
 export default function FeedList({
@@ -314,6 +318,7 @@ export default function FeedList({
   onOpenCommunityBySlug,
   showCommunityChip = true,
   listRef,
+  listHeader,
 }: FeedListProps) {
   const renderItem = useCallback(
     ({ item }: { item: FeedPost }) => (
@@ -341,18 +346,26 @@ export default function FeedList({
     ]
   );
 
+  const headerNode = listHeader ? <View style={styles.headerBleed}>{listHeader}</View> : null;
+
   if (loading && posts.length === 0) {
     return (
-      <View style={styles.centerFill}>
-        <ActivityIndicator color="#ffffff" />
+      <View style={styles.fill}>
+        {headerNode}
+        <View style={styles.centerFill}>
+          <ActivityIndicator color="#ffffff" />
+        </View>
       </View>
     );
   }
 
   if (!loading && posts.length === 0) {
     return (
-      <View style={styles.centerFill}>
-        <Text style={styles.emptyText}>No posts yet - be the first to post!</Text>
+      <View style={styles.fill}>
+        {headerNode}
+        <View style={styles.centerFill}>
+          <Text style={styles.emptyText}>No posts yet - be the first to post!</Text>
+        </View>
       </View>
     );
   }
@@ -366,6 +379,7 @@ export default function FeedList({
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#ffffff" />
       }
+      ListHeaderComponent={headerNode}
       onEndReached={onLoadMore}
       onEndReachedThreshold={0.5}
       ListFooterComponent={
@@ -378,6 +392,8 @@ export default function FeedList({
 
 const styles = StyleSheet.create({
   listContent: { paddingHorizontal: 16, paddingBottom: 24 },
+  fill: { flex: 1 },
+  headerBleed: { marginHorizontal: -16 },
   centerFill: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   emptyText: { color: '#71717a', fontSize: 13 },
   card: { paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#27272a' },

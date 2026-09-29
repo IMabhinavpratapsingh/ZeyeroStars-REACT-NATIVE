@@ -1,5 +1,6 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import AvatarLayers, { type EquippedByCategory } from '../../avatar/components/AvatarLayers';
 import RankBadge from '../../../shared/components/RankBadge';
@@ -334,6 +335,7 @@ const BattlePage = ({
   onClose,
 }: BattlePageProps) => {
   const [timeLeft, setTimeLeft] = useState(selectionTime || 20);
+  const insets = useSafeAreaInsets();
   const [selectedSkillId, setSelectedSkillId] = useState<string | number | null>(null);
   const hasSubmittedRef = useRef(false);
   const selectedSkillRef = useRef<string | number | null>(null);
@@ -388,7 +390,7 @@ const BattlePage = ({
   const selectable = phase === 'selecting' && !hasSubmittedRef.current;
 
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, { paddingTop: insets.top }]}>
       <View style={styles.timerBar}>
         <View style={styles.timerBarTitleRow}>
           <Ionicons name="flash-outline" size={12} color="#9a9a9a" />

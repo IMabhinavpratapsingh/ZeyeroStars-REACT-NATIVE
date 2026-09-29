@@ -22,6 +22,7 @@ import { PersistentSlide } from '../../../shared/components/motion/ScreenTransit
 import useRoomState from '../../dashboard/hooks/useRoomState';
 import RoomChatWindow from './RoomChatWindow';
 import LoadingOverlay from '../../../shared/components/LoadingOverlay';
+import { subscribeOpenRoom, notifyMyRoomChanged } from '../../../shared/utils/navOverlayBus';
 
 // WEB -> RN: yeh pehle `app/(tabs)/rooms.tsx` tha (ek Tabs.Screen route).
 // Ab DM ki tarah hi Community list/detail jaisa PERSISTENT overlay hai -
@@ -134,6 +135,10 @@ export default function RoomsOverlayScreen({ show, onClose }: RoomsOverlayScreen
 
   useWebSocket(roomState.wsHandlers);
 
+  // Feed ke RoomsStrip se (Your Room / active room) seedha room join.
+  const { openRoom: openRoomFromBus } = roomState;
+  useEffect(() => subscribeOpenRoom((room) => openRoomFromBus(room)), [openRoomFromBus]);
+
   const loadRooms = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     if (!silent) setLoading(true);
     try {
@@ -162,6 +167,7 @@ export default function RoomsOverlayScreen({ show, onClose }: RoomsOverlayScreen
     setCreating(true);
     try {
       await createRoom(trimmed);
+      notifyMyRoomChanged();
       setNewRoomName('');
       setShowCreate(false);
       loadRooms({ silent: true });
@@ -249,7 +255,10 @@ export default function RoomsOverlayScreen({ show, onClose }: RoomsOverlayScreen
             onUnban={roomState.handleUnbanUser}
             roomPositions={roomState.roomPositions}
             isPrivileged={isPrivileged}
-            onRoomSaved={() => loadRooms({ silent: true })}
+            onRoomSaved={() => {
+              loadRooms({ silent: true });
+              notifyMyRoomChanged();
+            }}
           />
         )}
 

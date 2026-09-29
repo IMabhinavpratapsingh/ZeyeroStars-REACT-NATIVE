@@ -1,5 +1,6 @@
 import React, { memo, useMemo } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import BluffTableSeats from './BluffTableSeats';
 import BluffHandTray from './BluffHandTray';
@@ -31,6 +32,7 @@ interface BluffGamePageProps {
 
 const BluffGamePage = ({ show, match, selfProfile, opponentAvatars = {}, onClose, onPlayCards, onAccuse }: BluffGamePageProps) => {
   useBackButtonHandler(show, onClose);
+  const insets = useSafeAreaInsets();
 
   const view = useMemo(() => {
     if (!match) return null;
@@ -91,7 +93,7 @@ const BluffGamePage = ({ show, match, selfProfile, opponentAvatars = {}, onClose
 
   if (!match || !view) {
     return (
-      <View style={[styles.screen, styles.centered]}>
+      <View style={[styles.screen, { paddingTop: insets.top }, styles.centered]}>
         <ActivityIndicator size="large" color="#f6bc7a" />
         <Text style={styles.loadingText}>Setting up the table…</Text>
         <Pressable onPress={onClose}>
@@ -123,7 +125,7 @@ const BluffGamePage = ({ show, match, selfProfile, opponentAvatars = {}, onClose
   const iWon = gameOver && gameOver.winner_seat != null && remap(gameOver.winner_seat, mySeat) === 0;
 
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <Pressable onPress={onClose} style={styles.headerBtn}>
           <Ionicons name="close" size={18} color="#fff" />

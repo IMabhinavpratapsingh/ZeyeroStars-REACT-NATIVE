@@ -1,5 +1,6 @@
 import React, { memo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import ChessFlow from './ChessFlow';
 import useBackButtonHandler from '../../../shared/hooks/useBackButtonHandler';
@@ -20,10 +21,11 @@ interface ChessFullScreenModalProps {
 
 const ChessFullScreenModal = ({ show, onClose }: ChessFullScreenModalProps) => {
   const __z = useTopZIndex(show);
+  const insets = useSafeAreaInsets();
   useBackButtonHandler(show, onClose);
 
   return (
-    <FadeIn show={show} style={[styles.container, { zIndex: __z }]}>
+    <FadeIn show={show} style={[styles.container, { zIndex: __z, paddingTop: insets.top }]}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Chess</Text>
         <Pressable onPress={onClose} accessibilityLabel="Close" style={styles.closeBtn}>

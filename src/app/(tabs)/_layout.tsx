@@ -40,6 +40,8 @@ import { requestFeedScrollTopReload } from '../../shared/utils/feedScrollBus';
 import { subscribeOpenCommunity, requestOpenCommunityBySlug, requestOpenCommunityById } from '../../shared/utils/communityOpenBus';
 import { subscribeOpenProfile, type ProfileOpenPayload } from '../../shared/utils/profileOpenBus';
 import { subscribeFullscreenOverlay } from '../../shared/utils/fullscreenOverlayBus';
+import { requestOpenGame, subscribeGameActive } from '../../shared/utils/gameOverlayBus';
+import GameOverlayScreen from '../../features/battle/components/GameOverlayScreen';
 
 // ---------------------------------------------------------------------------
 // ASLI FIX #1 (pehle se yahan tha): `<Slot/>` ki jagah `<Tabs/>` navigator,
@@ -270,6 +272,12 @@ export default function TabsLayout() {
   const [fullscreenOverlayOpen, setFullscreenOverlayOpenState] = useState(false);
   useEffect(() => subscribeFullscreenOverlay((isOpen) => setFullscreenOverlayOpenState(isOpen)), []);
 
+  // Game tab (Battle/Bluff Court) - GameOverlayScreen apna poora state
+  // khud rakhta hai (Rooms/DM jaisa persistent overlay), BottomNav ka
+  // "Game" icon sirf gameOverlayBus se isse toggle karne ko bolta hai.
+  const [isGameActive, setIsGameActive] = useState(false);
+  useEffect(() => subscribeGameActive(setIsGameActive), []);
+
   // Feed/PostDetailModal/@mentions se "community naam par tap" -> yahi
   // bus sunta hai aur community.openCommunityById() call karta hai (ya
   // pehle slug se community fetch karke). Overlay-close hierarchy same
@@ -416,6 +424,8 @@ export default function TabsLayout() {
               headerShown: false,
               sceneStyle: { backgroundColor: '#000000' },
               animation: 'none',
+              lazy: true,
+              freezeOnBlur: true,
             }}
           >
             <Tabs.Screen name="dashboard" />
@@ -429,14 +439,17 @@ export default function TabsLayout() {
         onRoomsClick={openRooms}
         onDMClick={openDM}
         onCommunitiesClick={openCommunities}
-        onGameClick={() => {}}
+        onGameClick={requestOpenGame}
         isHomeActive={isHomeActive && !anyOverlayOpen}
         isRoomsActive={showRooms}
         isDMActive={showDM}
+        isGameActive={isGameActive}
         onHomeSingleTap={handleHomeSingleTap}
         onHomeDoubleTap={handleHomeDoubleTap}
       />
       )}
+
+      <GameOverlayScreen />
 
       <QuickActionsSheet
         show={showQuickActions}

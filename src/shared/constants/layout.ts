@@ -19,4 +19,9 @@
 export const BOTTOM_NAV_PX = 80;
 
 /** Nav bar ki total height = fixed nav height + device ka bottom safe-area inset. */
-export const getBottomNavTotal = (bottomInset: number): number => BOTTOM_NAV_PX + bottomInset;
+// FIX: BottomNav ki asli rendered height sirf BOTTOM_NAV_PX hai (usme insets.bottom
+// add nahi hota), aur Community/Rooms/DM overlays bhi `bottom: BOTTOM_NAV_PX` use
+// karte hain. Pehle yahan `+ bottomInset` tha -> Profile/Shop/LimitedStore nav ke
+// upar `insets.bottom` jitna gap chhod dete the jisme neeche ki feed dikhti thi.
+// `bottomInset` param signature compatible rakhne ke liye bacha hai (ab ignore).
+export const getBottomNavTotal = (_bottomInset: number = 0): number => BOTTOM_NAV_PX;

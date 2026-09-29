@@ -72,6 +72,7 @@ export interface WebSocketHandlers {
   onRoundResult?: WSHandler;
   onMatchEnd?: WSHandler;
   onSkillOnCooldown?: WSHandler;
+  onMatchmakingError?: WSHandler;
   // --- Trade ---
   onTradeRequest?: WSHandler;
   onTradeRequestSent?: WSHandler;

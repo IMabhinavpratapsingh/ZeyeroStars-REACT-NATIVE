@@ -94,7 +94,12 @@ export default function TabsLayout() {
       networkManager.connect(undefined, onDisconnect);
     }
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active' && !networkManager.isConnected() && !networkManager.isConnecting()) {
+      if (state !== 'active') return;
+      if (networkManager.isConnected()) {
+        // OPEN dikhne wala socket zombie ho sakta hai (background mein OS ne
+        // network tod diya) - ping se confirm karo, zombie nikla to khud reconnect.
+        networkManager.ensureAlive();
+      } else if (!networkManager.isConnecting()) {
         networkManager.forceReconnect();
       }
     });

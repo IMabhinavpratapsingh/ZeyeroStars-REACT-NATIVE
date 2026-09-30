@@ -1,4 +1,5 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 import axios from 'axios';
 import { API_BASE } from '../../../shared/config/config';
 import networkManager, { getToken } from '../../../shared/services/NetworkManager';
@@ -333,6 +334,70 @@ export default function useRoomState({
       ...(myLastPos ? { x: myLastPos.x, y: myLastPos.y } : {}),
     });
   }, []);
+
+  // ---------------------------------------------------------------------
+  // App lifecycle wiring (web Dashboard.jsx ke handleAppVisible/Hidden +
+  // handleReconnect ka RN version). Pehle handleAppHidden/rejoinRoomIfNeeded
+  // bane hue the lekin kahin call hi nahi hote the - isi wajah se background
+  // se wapas aane par room membership server par wapas register nahi hoti
+  // thi (connect dikhta tha, magar room_message server ignore karta tha).
+  //
+  // Sirf wahi hook instance kaam karta hai jiske paas activeRoom hai
+  // (dashboard.tsx wala instance hamesha no-op rehta hai).
+  // ---------------------------------------------------------------------
+  useEffect(() => {
+    // Background jaate waqt hum server ko room_leave bhej dete hain - true
+    // = server par hum room se hat chuke hain, foreground par rejoin karna hai.
+    let leftForBackground = false;
+    let lastState: AppStateStatus = AppState.currentState;
+
+    const onAppState = async (next: AppStateStatus) => {
+      const prev = lastState;
+      lastState = next;
+
+      if (next === 'background') {
+        if (activeRoomRef.current) {
+          handleAppHidden();
+          leftForBackground = true;
+        }
+        return;
+      }
+
+      if (next === 'active' && prev !== 'active') {
+        if (!activeRoomRef.current) {
+          leftForBackground = false;
+          return;
+        }
+        // readyState OPEN hone ka matlab zinda hona nahi - pehle ping se
+        // confirm karo. Zombie nikla to ensureAlive khud disconnect->reconnect
+        // chala deta hai aur neeche wala state listener open hote hi rejoin karega.
+        const alive = await networkManager.ensureAlive();
+        if (!alive) return;
+        if (leftForBackground && activeRoomRef.current) {
+          leftForBackground = false;
+          rejoinRoomIfNeeded();
+        }
+      }
+    };
+
+    const appSub = AppState.addEventListener('change', onAppState);
+
+    // Socket dobara open hua (reconnect ke baad) aur hum kisi room mein the -
+    // fresh room_join bhejo, warna naya socket room ki membership ke bina hota hai.
+    const unsubState = networkManager.addStateListener((open) => {
+      if (!open || !activeRoomRef.current) return;
+      // Background mein silently reconnect hua to rejoin mat karo - foreground
+      // par ensureAlive ke baad hoga (warna background mein ghost avatar banega).
+      if (AppState.currentState === 'background') return;
+      leftForBackground = false;
+      rejoinRoomIfNeeded();
+    });
+
+    return () => {
+      appSub.remove();
+      unsubState();
+    };
+  }, [handleAppHidden, rejoinRoomIfNeeded]);
 
   // ---------------------------------------------------------------------
   // Websocket handlers - Dashboard inko useWebSocket() ke merged handlers

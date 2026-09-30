@@ -98,6 +98,8 @@ function preloadInterstitial(): Promise<void> {
             console.error('Interstitial preload failed:', err);
             cleanup();
             resolve();
+            // Fail hua to 15s baad dobara try (temporary failure ke liye)
+            setTimeout(() => preloadInterstitial(), 15_000);
           })
         );
         // Ad band hote hi agla turant load - kabhi bhi ready rahe.

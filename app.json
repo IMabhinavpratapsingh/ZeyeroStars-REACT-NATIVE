@@ -4,11 +4,11 @@
     "slug": "ZSF",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./src/assets/zeyerostars.svg",
+    "icon": "./assets/images/zeyerostars.png",
     "scheme": "zsf",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./src/assets/zeyerostars.svg"
+      "icon": "./assets/images/zeyerostars.png"
     },
     "android": {
       "package": "com.zeyerostars.app",

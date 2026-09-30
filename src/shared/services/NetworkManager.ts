@@ -45,7 +45,13 @@ class NetworkManager {
   private _connecting = false;
   private _listeners = new Set<(data: any) => void>();
   private _sendQueue: any[] = [];
-  private _checkingAlive = false;
+  // ensureAlive() ka in-flight check - overlapping callers (root layout +
+  // room hook, dono AppState 'active' par call karte hain) ek hi promise
+  // share karte hain, taaki dusre caller ko "already alive" ka jhootha
+  // jawab na mile jab asli ping-check abhi chal hi raha ho.
+  private _aliveCheck: Promise<boolean> | null = null;
+  // Connection open/close ke observers (RoomRadioPlayer, useRoomState).
+  private _stateListeners = new Set<(open: boolean) => void>();
 
   async setToken(token: string): Promise<void> {
     tokenCache = token;
@@ -55,6 +61,23 @@ class NetworkManager {
   addListener(fn: (data: any) => void): () => void {
     this._listeners.add(fn);
     return () => this._listeners.delete(fn);
+  }
+
+  // open=true jab socket open ho, open=false jab band ho (ya zombie nikle).
+  // Returns an unsubscribe function.
+  addStateListener(fn: (open: boolean) => void): () => void {
+    this._stateListeners.add(fn);
+    return () => this._stateListeners.delete(fn);
+  }
+
+  private _emitState(open: boolean): void {
+    this._stateListeners.forEach((fn) => {
+      try {
+        fn(open);
+      } catch (err) {
+        console.error('NetworkManager state listener error:', err);
+      }
+    });
   }
 
   connect(onMessage?: (data: any) => void, onDisconnect?: () => void): void {
@@ -88,6 +111,7 @@ class NetworkManager {
       this._connecting = false;
       this._reconnectAttempts = 0;
       this._flushQueue();
+      this._emitState(true);
     };
 
     this.ws.onmessage = (event: any) => {
@@ -106,6 +130,7 @@ class NetworkManager {
       console.log('Disconnected from Server');
       this._connecting = false;
       this.ws = null;
+      this._emitState(false);
       if (this._onDisconnect) this._onDisconnect();
     };
 
@@ -139,6 +164,7 @@ class NetworkManager {
       }
       this.ws = null;
     }
+    this._emitState(false);
   }
 
   reconnect(): void {
@@ -197,21 +223,20 @@ class NetworkManager {
   }
 
   ensureAlive(timeoutMs = 2500): Promise<boolean> {
-    if (this._checkingAlive) return Promise.resolve(true);
+    // Check pehle se chal raha hai to usi ka result share karo.
+    if (this._aliveCheck) return this._aliveCheck;
 
-    return new Promise((resolve) => {
-      if (!this.isConnected()) {
-        this.forceReconnect();
-        resolve(false);
-        return;
-      }
+    if (!this.isConnected()) {
+      this.forceReconnect();
+      return Promise.resolve(false);
+    }
 
-      this._checkingAlive = true;
+    const check = new Promise<boolean>((resolve) => {
       let settled = false;
       const finish = (result: boolean) => {
         if (settled) return;
         settled = true;
-        this._checkingAlive = false;
+        this._aliveCheck = null;
         resolve(result);
       };
 
@@ -226,6 +251,7 @@ class NetworkManager {
       const timer = setTimeout(() => {
         if (settled) return;
         unsubscribe();
+        // Zombie socket - readyState OPEN tha lekin server se pong nahi aaya.
         if (this.ws) {
           try {
             this.ws.onclose = null;
@@ -236,7 +262,10 @@ class NetworkManager {
           }
           this.ws = null;
         }
+        this._connecting = false;
         this._reconnectAttempts = 0;
+        // onclose null kiya tha, isliye observers ko yahin se batao.
+        this._emitState(false);
         if (this._onDisconnect) {
           this._onDisconnect();
         } else {
@@ -247,6 +276,9 @@ class NetworkManager {
 
       this.send({ type: 'ping' });
     });
+
+    this._aliveCheck = check;
+    return check;
   }
 
   send(data: any): boolean {

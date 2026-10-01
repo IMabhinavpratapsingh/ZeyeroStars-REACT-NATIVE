@@ -3,6 +3,8 @@ import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import axios from 'axios';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
+import useAvatarImage from '../../avatar/hooks/useAvatarImage';
 import { API_BASE } from '../../../shared/config/config';
 import { getToken } from '../../../shared/services/NetworkManager';
 import useBackButtonHandler from '../../../shared/hooks/useBackButtonHandler';
@@ -44,13 +46,20 @@ const likeText = (likers: string[], total: number): string => {
   return `${likers[0]} and ${likers[1]} and ${total - 2} more liked your post`;
 };
 
-const ICON: Record<string, string> = {
-  like: 'heart-outline',
-  comment: 'chatbubble-ellipses-outline',
-  post_mention: 'create-outline',
-  comment_mention: 'chatbubble-ellipses-outline',
-  star: 'star-outline',
-  community_join: 'people-outline',
+const AVATAR = 40;
+const STACK_OFFSET = 16; // multiple pfp ek doosre par overlap
+
+const ActorAvatar = ({ actor, size = AVATAR }: { actor: any; size?: number }) => {
+  const src = useAvatarImage(actor?.id, actor?.avatar_url, actor?.avatar_version);
+  return (
+    <View style={[styles.avatarCircle, { width: size, height: size, borderRadius: size / 2 }]}>
+      {src ? (
+        <Image source={{ uri: src }} style={{ width: size, height: size }} contentFit="cover" />
+      ) : (
+        <Text style={styles.avatarInitial}>{(actor?.username || '?').charAt(0).toUpperCase()}</Text>
+      )}
+    </View>
+  );
 };
 
 const notifText = (item: any): string => {
@@ -72,7 +81,8 @@ const notifText = (item: any): string => {
   }
 };
 
-const NOTIFICATIONS_PAGE_SIZE = 30;
+// Ek baar mein sirf 5 notifications DB se aate hain; "View more" par agle 5.
+const NOTIFICATIONS_PAGE_SIZE = 5;
 
 interface NotificationsModalProps {
   show: boolean;
@@ -141,6 +151,12 @@ const NotificationsModal = ({ show, onClose, onOpenPost, onOpenProfile, onOpenCo
       .finally(() => setLoadingMore(false));
   };
 
+  // Single bande ki pfp -> uska profile. (Multiple me pfp tap = row tap = us jagah.)
+  const handleAvatarTap = (actor: any) => {
+    if (actor?.id == null) return;
+    onOpenProfile?.({ id: actor.id, username: actor.username });
+  };
+
   const handleTap = (item: any) => {
     if (item.type === 'star') {
       onOpenProfile?.({ id: item.actor_id, username: item.username });
@@ -186,18 +202,40 @@ const NotificationsModal = ({ show, onClose, onOpenPost, onOpenProfile, onOpenCo
           data={items}
           keyExtractor={(item, i) => `${item.type}-${item.post_id || item.comment_id || item.username}-${i}`}
           contentContainerStyle={styles.listContent}
-          onEndReachedThreshold={0.4}
-          onEndReached={loadMore}
           ListEmptyComponent={<Text style={styles.emptyText}>No activity yet.</Text>}
-          ListFooterComponent={loadingMore ? <SkeletonRow /> : null}
-          renderItem={({ item, index }) => {
-            const iconName = ICON[item.type] || 'notifications-outline';
+          ListFooterComponent={
+            loadingMore ? (
+              <SkeletonRow />
+            ) : hasMore ? (
+              <Pressable onPress={loadMore} style={({ pressed }) => [styles.viewMore, pressed && styles.rowPressed]}>
+                <Text style={styles.viewMoreText}>View more</Text>
+              </Pressable>
+            ) : null
+          }
+          renderItem={({ item }) => {
+            const actors: any[] = (item.actors || []).slice(0, 3);
+            const isGroup = (item.total_likers || 1) > 1; // multiple log -> pfp tap bhi row jaisa hi
+            const stackW = AVATAR + Math.max(0, actors.length - 1) * STACK_OFFSET;
             return (
               <Pressable
                 onPress={() => handleTap(item)}
                 style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
               >
-                <Ionicons name={iconName as any} size={20} color="#ffffff" />
+                <Pressable
+                  onPress={() => (isGroup || !actors[0] ? handleTap(item) : handleAvatarTap(actors[0]))}
+                  hitSlop={6}
+                  style={{ width: stackW, height: AVATAR }}
+                >
+                  {actors.length === 0 ? (
+                    <Ionicons name="notifications-outline" size={22} color="#ffffff" />
+                  ) : (
+                    actors.map((a, i) => (
+                      <View key={`${a.id}-${i}`} style={[styles.stackItem, { left: i * STACK_OFFSET, zIndex: 10 - i }]}>
+                        <ActorAvatar actor={a} size={AVATAR - 4} />
+                      </View>
+                    ))
+                  )}
+                </Pressable>
                 <Text style={styles.rowText} numberOfLines={3}>
                   {notifText(item)}
                 </Text>
@@ -247,6 +285,34 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   rowPressed: { backgroundColor: '#262626' },
+  stackItem: {
+    position: 'absolute',
+    top: 0,
+    width: AVATAR,
+    height: AVATAR,
+    borderRadius: AVATAR / 2,
+    borderWidth: 2,
+    borderColor: '#161616',
+    overflow: 'hidden',
+  },
+  avatarCircle: {
+    overflow: 'hidden',
+    backgroundColor: '#262626',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitial: { color: '#ffffff', fontWeight: '700', fontSize: 15 },
+  viewMore: {
+    alignSelf: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 22,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#262626',
+    marginTop: 4,
+    marginBottom: 12,
+  },
+  viewMoreText: { color: '#818cf8', fontSize: 14, fontWeight: '600' },
   rowText: { flex: 1, fontSize: 14, color: '#ffffff' },
   time: { fontSize: 12, color: '#6e6e6e', flexShrink: 0 },
   skeletonAvatar: {

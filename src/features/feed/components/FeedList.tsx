@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import useAvatarImage from '../../avatar/hooks/useAvatarImage';
+import PostImage from './PostImage';
 import OnlineStatusDot from '../../../shared/components/OnlineStatusDot';
 import RankBadge from '../../../shared/components/RankBadge';
 import VerifiedBadge from '../../../shared/components/VerifiedBadge';
@@ -258,7 +259,7 @@ const PostCard = memo(function PostCard({
       )}
 
       {!!post.image_url && (
-        <Image source={{ uri: post.image_url as string }} style={styles.postImage} />
+        <PostImage uri={post.image_url as string} />
       )}
 
       <View style={styles.actionsRow}>

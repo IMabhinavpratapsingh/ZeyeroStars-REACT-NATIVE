@@ -134,7 +134,8 @@ const InboxRow = memo(
     isTyping?: boolean;
   }) => {
     const avatarSrc = useAvatarImage(dm.target_id, dm.avatar_url, dm.avatar_version);
-    const hasUnread = (dm.unread_count || 0) > 0;
+    const unreadCount = Number(dm.unread_count) || 0;
+    const hasUnread = unreadCount > 0;
     const time = formatInboxTime(dm.last_message_time);
     const kebabRef = useRef<KebabMenuHandle>(null);
 
@@ -205,7 +206,11 @@ const InboxRow = memo(
           {!!time && <Text style={styles.timeText}>{time}</Text>}
           <View style={styles.trailingIconRow}>
             <Ionicons name="chevron-forward-outline" size={16} color="#525252" />
-            {hasUnread && <View style={styles.unreadDot} />}
+            {hasUnread && (
+              <View style={styles.rowUnreadBadge}>
+                <Text style={styles.rowUnreadBadgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+              </View>
+            )}
           </View>
         </View>
 
@@ -807,6 +812,16 @@ const styles = StyleSheet.create({
   timeText: { fontSize: 11, color: '#6e6e6e' },
   trailingIconRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#818cf8' },
+  rowUnreadBadge: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    backgroundColor: '#4f46e5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rowUnreadBadgeText: { color: '#ffffff', fontSize: 11, fontWeight: '700' },
   liveRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#22c55e' },
   liveText: { fontSize: 10, fontWeight: '700', color: '#4ade80' },

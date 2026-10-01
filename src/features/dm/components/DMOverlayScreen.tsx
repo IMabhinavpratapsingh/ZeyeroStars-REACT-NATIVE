@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Keyboard, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { AppState, Keyboard, StyleSheet, useWindowDimensions, View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import useTopZIndex from '../../../shared/hooks/useTopZIndex';
 import { getMyId } from '../../../shared/utils/auth';
@@ -17,6 +17,7 @@ import InboxModal from './InboxModal';
 import DMChatWindow from './DMChatWindow';
 import WorldChatWindow from './WorldChatWindow';
 import { requestOpenProfile } from '../../../shared/utils/profileOpenBus';
+import networkManager from '../../../shared/services/NetworkManager';
 
 // WEB -> RN: yeh pehle `app/(tabs)/dm.tsx` tha (ek Tabs.Screen route). Ab
 // `(tabs)/_layout.tsx` ke andar Community list/detail jaisa hi ek PERSISTENT
@@ -91,9 +92,34 @@ export default function DMOverlayScreen({ show, onClose, onOpenOverlay, myBalanc
     getUsername,
     clearForUser,
     setRoomScreenVisible: () => {},
-    showNotification,
-    isInboxOpen: () => showInbox,
+    // In-app toast ki jagah ab FCM banner aata hai (backend ko dm_view se pata
+    // chalta hai ki user Inbox/chat par nahi hai) - dono dikhne se double
+    // notification hota tha.
+    showNotification: () => {},
+    isInboxOpen: () => show && showInbox,
   });
+
+  // Server ko batao: user abhi (app foreground mein) Inbox dekh raha hai ya kisi
+  // ki chat. Inbox/chat na khula ho to backend FCM push bhejta hai, bhale
+  // websocket connected ho.
+  const [appActive, setAppActive] = useState(AppState.currentState === 'active');
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (st) => setAppActive(st === 'active'));
+    return () => sub.remove();
+  }, []);
+  const viewingInbox = show && appActive && showInbox && !showWorld;
+  const viewingChatId =
+    show && appActive && !showInbox && dm.selectedDM
+      ? String((dm.selectedDM as any).id ?? (dm.selectedDM as any).target_id)
+      : null;
+  useEffect(() => {
+    const report = () => networkManager.send({ type: 'dm_view', inbox: viewingInbox, chat: viewingChatId });
+    report();
+    // Reconnect ke baad server ka view-state reset ho jaata hai - dobara bhejo.
+    return networkManager.addStateListener((open) => {
+      if (open) report();
+    });
+  }, [viewingInbox, viewingChatId]);
 
   // Trade (DM header ke Trade button se) - web Dashboard ka trade state ab yahan.
   // Incoming request accept -> DM overlay khulta hai + us user ki chat select hoti hai.

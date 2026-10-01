@@ -18,6 +18,7 @@ import useTopZIndex from '../../../shared/hooks/useTopZIndex';
 import useStableCallback from '../../../shared/hooks/useStableCallback';
 import useLongPress from '../../../shared/hooks/useLongPress';
 import useAvatarImage from '../../avatar/hooks/useAvatarImage';
+import PostImage from './PostImage';
 import OnlineStatusDot from '../../../shared/components/OnlineStatusDot';
 import LongPressActionSheet, { type ActionSheetItem } from '../../../shared/components/LongPressActionSheet';
 import KebabMenu from '../../../shared/components/KebabMenu';
@@ -636,7 +637,7 @@ const PostDetailModal = ({
                 </Text>
               )}
               {!!post.image_url && (
-                <Image source={{ uri: post.image_url as string }} style={styles.postImage} />
+                <PostImage uri={post.image_url as string} zoomable />
               )}
 
               <LongPressActionSheet

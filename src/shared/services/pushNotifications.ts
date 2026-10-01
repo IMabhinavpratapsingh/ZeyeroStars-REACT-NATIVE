@@ -37,15 +37,19 @@ export type PushTapData = {
 };
 type PushTapHandler = (data: PushTapData) => void;
 
-// App khuli hote hue (foreground) notification aaye to system banner/sound
-// nahi - app ka apna in-app toast UI hi kaafi hai (web wale comment jaisa).
+// App khuli hote hue (foreground) DM push ka banner + sound dikhao - backend
+// sirf tab bhejta hai jab user Inbox / us sender ki chat par NAHI hai (dm_view).
+// Baaki push types foreground mein pehle jaise silent (app ka apna UI dikhata hai).
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: false,
-    shouldShowList: false,
-    shouldPlaySound: false,
-    shouldSetBadge: false,
-  }),
+  handleNotification: async (notification) => {
+    const isDM = (notification.request.content.data as any)?.type === 'dm';
+    return {
+      shouldShowBanner: isDM,
+      shouldShowList: isDM,
+      shouldPlaySound: isDM,
+      shouldSetBadge: false,
+    };
+  },
 });
 
 type Subscription = { remove: () => void };
@@ -103,6 +107,13 @@ export async function setupPushNotifications(): Promise<void> {
       await Notifications.setNotificationChannelAsync('default', {
         name: 'Default',
         importance: Notifications.AndroidImportance.MAX,
+      });
+      // Backend (push_service.py) channel_id="messages" bhejta hai - ye channel
+      // na ho to Android 8+ par notification sahi importance/sound ke bina aata hai.
+      await Notifications.setNotificationChannelAsync('messages', {
+        name: 'Messages',
+        importance: Notifications.AndroidImportance.MAX,
+        sound: 'default',
       });
     }
 

@@ -15,6 +15,8 @@ import useTradeState from '../../dashboard/hooks/useTradeState';
 import TradeRequestModal from '../../trade/components/TradeRequestModal';
 import InboxModal from './InboxModal';
 import DMChatWindow from './DMChatWindow';
+import WorldChatWindow from './WorldChatWindow';
+import { requestOpenProfile } from '../../../shared/utils/profileOpenBus';
 
 // WEB -> RN: yeh pehle `app/(tabs)/dm.tsx` tha (ek Tabs.Screen route). Ab
 // `(tabs)/_layout.tsx` ke andar Community list/detail jaisa hi ek PERSISTENT
@@ -66,12 +68,15 @@ interface DMOverlayScreenProps {
   myBalance?: { coins?: number; z_money?: number } | null;
   /** trade_completed ka new_balance parent ke balance mein merge karne ke liye */
   onBalanceMerge?: (newBalance: { coins?: number; z_money?: number }) => void;
+  /** Kitni conversations mein unread messages hain - BottomNav ke DM button ka badge isi se chalta hai. */
+  onUnreadConversationsChange?: (count: number) => void;
 }
 
-export default function DMOverlayScreen({ show, onClose, onOpenOverlay, myBalance, onBalanceMerge }: DMOverlayScreenProps) {
+export default function DMOverlayScreen({ show, onClose, onOpenOverlay, myBalance, onBalanceMerge, onUnreadConversationsChange }: DMOverlayScreenProps) {
   useBackButtonHandler(show, onClose);
 
   const [showInbox, setShowInbox] = useState(true);
+  const [showWorld, setShowWorld] = useState(false);
   const { cacheUser, getUsername } = useUserCache();
   const { notif, showNotification, clearForUser } = useNotification();
 
@@ -99,6 +104,12 @@ export default function DMOverlayScreen({ show, onClose, onOpenOverlay, myBalanc
   });
 
   useWebSocket({ ...dm.wsHandlers, ...trade.wsHandlers });
+
+  // Dashboard ke DM button badge ke liye conversation-count parent ko bhejo.
+  const unreadConversations = inbox.dmUnread.senders_count;
+  useEffect(() => {
+    onUnreadConversationsChange?.(unreadConversations);
+  }, [unreadConversations, onUnreadConversationsChange]);
 
   useEffect(() => {
     inbox.fetchInbox();
@@ -157,6 +168,15 @@ export default function DMOverlayScreen({ show, onClose, onOpenOverlay, myBalanc
     handleSelectDM(u);
   };
 
+  const handleOpenWorldChat = useCallback(() => setShowWorld(true), []);
+  const handleCloseWorldChat = useCallback(() => setShowWorld(false), []);
+  const handleWorldProfile = useCallback((u: { id: string | number; username?: string }) => requestOpenProfile(u), []);
+
+  // DM overlay band hote hi World Chat bhi band - dobara DM kholne par world chat apne aap na khule.
+  useEffect(() => {
+    if (!show) setShowWorld(false);
+  }, [show]);
+
   const handleCloseChat = useCallback(() => {
     Keyboard.dismiss();
     dmRef.current.closeChat();
@@ -185,7 +205,8 @@ export default function DMOverlayScreen({ show, onClose, onOpenOverlay, myBalanc
             onRefresh={inbox.refreshInbox}
             onClose={onClose}
             onSelectDM={handleSelectDM}
-            unreadTotal={inbox.dmUnread.total_messages}
+            unreadTotal={inbox.dmUnread.senders_count}
+            typingIds={dm.dmTypingIds}
             requestsList={inbox.requestsList}
             requestsLoading={inbox.requestsLoading}
             requestsLoadingMore={inbox.requestsLoadingMore}
@@ -194,6 +215,7 @@ export default function DMOverlayScreen({ show, onClose, onOpenOverlay, myBalanc
             onAcceptRequest={handleAcceptRequest}
             onDeclineRequest={handleDeclineRequest}
             onDeleteConversation={handleDeleteConversation}
+            onOpenWorldChat={handleOpenWorldChat}
           />
         </View>
       </PersistentSlide>
@@ -225,6 +247,14 @@ export default function DMOverlayScreen({ show, onClose, onOpenOverlay, myBalanc
           />
         </ChatSlide>
       )}
+
+      {/* World Chat - InboxModal ki pehli row se khulta hai */}
+      <WorldChatWindow
+        show={show && showWorld}
+        onClose={handleCloseWorldChat}
+        getMyId={getMyId}
+        onOpenProfile={handleWorldProfile}
+      />
 
       {/* Incoming trade request - jahan bhi ho turant chhota banner (non-blocking) */}
       <TradeRequestModal

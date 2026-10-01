@@ -126,10 +126,12 @@ const InboxRow = memo(
     dm,
     onSelectDM,
     onDelete,
+    isTyping = false,
   }: {
     dm: InboxDM;
     onSelectDM: (dm: InboxDM) => void;
     onDelete: (id: string | number) => void;
+    isTyping?: boolean;
   }) => {
     const avatarSrc = useAvatarImage(dm.target_id, dm.avatar_url, dm.avatar_version);
     const hasUnread = (dm.unread_count || 0) > 0;
@@ -187,10 +189,16 @@ const InboxRow = memo(
             {dm.is_verified && <VerifiedBadge size="md" />}
             {dm.is_elite && <EliteBadge size="md" />}
           </View>
-          <Text style={[styles.lastMessage, hasUnread && styles.lastMessageUnread]} numberOfLines={1}>
-            {isMine(dm) && <Text style={styles.youPrefix}>Me: </Text>}
-            {dm.last_message}
-          </Text>
+          {isTyping ? (
+            <Text style={styles.typingText} numberOfLines={1}>
+              typing...
+            </Text>
+          ) : (
+            <Text style={[styles.lastMessage, hasUnread && styles.lastMessageUnread]} numberOfLines={1}>
+              {isMine(dm) && <Text style={styles.youPrefix}>Me: </Text>}
+              {dm.last_message}
+            </Text>
+          )}
         </View>
 
         <View style={styles.rowTrailing}>
@@ -339,7 +347,10 @@ interface InboxModalProps {
   onClose: () => void;
   onSelectDM: (dm: InboxDM) => void;
   onCompose?: () => void;
+  /** Kitni conversations mein unread messages hain (message count nahi). */
   unreadTotal?: number;
+  /** Un users ke target_id jo abhi type kar rahe hain (inbox row par "typing..."). */
+  typingIds?: string[];
   requestsList?: InboxDM[];
   requestsLoading?: boolean;
   requestsLoadingMore?: boolean;
@@ -369,6 +380,7 @@ const InboxModal = ({
   onSelectDM,
   onCompose,
   unreadTotal = 0,
+  typingIds = [],
   requestsList = [],
   requestsLoading = false,
   requestsLoadingMore = false,
@@ -546,6 +558,7 @@ const InboxModal = ({
           {activeTab === 'primary' && (
             <FlatList
               data={filteredList}
+              extraData={typingIds}
               keyExtractor={(item) => String(item.target_id)}
               contentContainerStyle={styles.listContent}
               refreshControl={<RefreshControl refreshing={refreshingTab} onRefresh={handlePullRefresh} tintColor="#818cf8" />}
@@ -564,7 +577,14 @@ const InboxModal = ({
                 )
               }
               ListFooterComponent={loadingMore ? <SkeletonCard /> : null}
-              renderItem={({ item }) => <InboxRow dm={item} onSelectDM={onSelectDM} onDelete={onDeleteConversation} />}
+              renderItem={({ item }) => (
+                <InboxRow
+                  dm={item}
+                  onSelectDM={onSelectDM}
+                  onDelete={onDeleteConversation}
+                  isTyping={typingIds.includes(String(item.target_id))}
+                />
+              )}
             />
           )}
 
@@ -781,6 +801,7 @@ const styles = StyleSheet.create({
   metaRow: { flexDirection: 'row', alignItems: 'center' },
   lastMessage: { fontSize: 14, color: '#9a9a9a' },
   lastMessageUnread: { color: '#f5f5f5', fontWeight: '600' },
+  typingText: { fontSize: 14, color: '#4ade80', fontStyle: 'italic' },
   youPrefix: { color: '#a3a3a3', fontWeight: '600' },
   rowTrailing: { alignItems: 'flex-end', gap: 6, flexShrink: 0 },
   timeText: { fontSize: 11, color: '#6e6e6e' },

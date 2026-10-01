@@ -162,6 +162,8 @@ export default function TabsLayout() {
   // sakein (bilkul useCommunityState jaisa hi pattern).
   const [showRooms, setShowRooms] = useState(false);
   const [showDM, setShowDM] = useState(false);
+  // Kitni conversations se unread DM aaye hain - BottomNav DM button ka badge.
+  const [dmUnreadConversations, setDmUnreadConversations] = useState(0);
 
   const closeRooms = useCallback(() => setShowRooms(false), []);
   const closeDM = useCallback(() => setShowDM(false), []);
@@ -518,6 +520,7 @@ export default function TabsLayout() {
         onDMClick={openDM}
         onCommunitiesClick={openCommunities}
         onGameClick={requestOpenGame}
+        dmBadgeCount={dmUnreadConversations}
         isHomeActive={isHomeActive && !anyOverlayOpen}
         isRoomsActive={showRooms}
         isDMActive={showDM}
@@ -551,6 +554,7 @@ export default function TabsLayout() {
         show={showDM}
         onClose={closeDM}
         onOpenOverlay={openDM}
+        onUnreadConversationsChange={setDmUnreadConversations}
         myBalance={balance}
         onBalanceMerge={(nb) => setBalance((prev) => ({ ...prev, ...nb }))}
       />

@@ -81,7 +81,8 @@ export default function DMScreen() {
         onRefresh={inbox.refreshInbox}
         onClose={() => {}}
         onSelectDM={handleSelectDM}
-        unreadTotal={inbox.dmUnread.total_messages}
+        unreadTotal={inbox.dmUnread.senders_count}
+        typingIds={dm.dmTypingIds}
         requestsList={inbox.requestsList}
         requestsLoading={inbox.requestsLoading}
         requestsLoadingMore={inbox.requestsLoadingMore}

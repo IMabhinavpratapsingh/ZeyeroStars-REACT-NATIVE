@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { API_BASE } from '../../../shared/config/config';
 import networkManager, { getToken } from '../../../shared/services/NetworkManager';
@@ -19,6 +19,9 @@ import type { InboxRow, UseInboxStateReturn } from './useInboxState';
 
 const DM_PAGE_SIZE = 20; // scroll-up (older) pagination
 const DM_INITIAL_SIZE = 10; // chat kholte hi sirf latest 10 messages
+// Typing "false" event kho jaaye (network drop etc.) to inbox row par "typing..."
+// hamesha atka na rahe - itne time baad apne aap hat jaata hai.
+const TYPING_SAFETY_EXPIRE_MS = 30000;
 
 // DB se (chat_messages table se) aane wala raw row snake_case mein hota hai
 // (is_tip, tip_amount) - lekin DMChatWindow ka bubble component `msg.isTip`
@@ -81,6 +84,40 @@ export default function useDMState({
   const [dmHasMore, setDmHasMore] = useState(false);
   const [dmLoadingMore, setDmLoadingMore] = useState(false);
   const [dmOtherTyping, setDmOtherTyping] = useState(false);
+  // Inbox list ke liye: kaun-kaun se users (target_id strings) abhi mujhe type kar rahe hain -
+  // chat khuli ho ya nahi, dono case mein.
+  const [dmTypingIds, setDmTypingIds] = useState<string[]>([]);
+  const typingTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  const setTypingFor = useCallback((senderId: string | number, typing: boolean) => {
+    const key = String(senderId);
+    const timers = typingTimersRef.current;
+    const existing = timers.get(key);
+    if (existing) {
+      clearTimeout(existing);
+      timers.delete(key);
+    }
+    if (typing) {
+      timers.set(
+        key,
+        setTimeout(() => {
+          timers.delete(key);
+          setDmTypingIds((prev) => prev.filter((id) => id !== key));
+        }, TYPING_SAFETY_EXPIRE_MS)
+      );
+      setDmTypingIds((prev) => (prev.includes(key) ? prev : [...prev, key]));
+    } else {
+      setDmTypingIds((prev) => (prev.includes(key) ? prev.filter((id) => id !== key) : prev));
+    }
+  }, []);
+
+  useEffect(() => {
+    const timers = typingTimersRef.current;
+    return () => {
+      timers.forEach((t) => clearTimeout(t));
+      timers.clear();
+    };
+  }, []);
   const [dmDraftMessage, setDmDraftMessage] = useState('');
   // target_id -> "pending_sent" | "pending_incoming" | "denied" | "declined_by_me" | null
   const [dmRequestLocks, setDmRequestLocks] = useState<Record<string, string | null>>({});
@@ -430,6 +467,7 @@ export default function useDMState({
         setChatMessages((prev) => [...prev, newMsg]);
         appendCachedMessage(targetId, newMsg);
         setDmOtherTyping(false);
+        setTypingFor(data.sender_id, false);
 
         if (data.conversation_status === 'pending') {
           setDmRequestLocks((prev) => ({ ...prev, [String(targetId)]: 'pending_incoming' }));
@@ -463,6 +501,7 @@ export default function useDMState({
           }
         );
       } else {
+        setTypingFor(data.sender_id, false);
         const senderName = getUsername(data.sender_id) || data.sender_username || 'Someone';
         if (data.sender_username) cacheUser({ id: data.sender_id, username: data.sender_username });
 
@@ -520,7 +559,7 @@ export default function useDMState({
         );
       }
     },
-    [cacheUser, getUsername, inbox, isInboxOpen, selectedDM, showNotification]
+    [cacheUser, getUsername, inbox, isInboxOpen, selectedDM, setTypingFor, showNotification]
   );
 
   const handleDMSeen = useCallback(
@@ -537,12 +576,15 @@ export default function useDMState({
 
   const handleDMTyping = useCallback(
     (data: any) => {
+      // Inbox list ke liye - chat khuli ho ya na ho, har sender ka typing track hota hai.
+      setTypingFor(data.sender_id, !!data.is_typing);
+
       const dmId = selectedDM && getTargetId(selectedDM);
       if (dmId && String(data.sender_id) === String(dmId)) {
         setDmOtherTyping(!!data.is_typing);
       }
     },
-    [selectedDM]
+    [selectedDM, setTypingFor]
   );
 
   const handleDMBlocked = useCallback((data: any) => {
@@ -736,6 +778,7 @@ export default function useDMState({
     dmHasMore,
     dmLoadingMore,
     dmOtherTyping,
+    dmTypingIds,
     dmDraftMessage,
     dmRequestLocks,
     setDmRequestLocks,

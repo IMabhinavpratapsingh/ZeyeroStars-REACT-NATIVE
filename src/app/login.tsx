@@ -25,6 +25,10 @@ import { auth } from '../shared/config/firebaseConfig';
 import { showAlert } from '../shared/utils/alertBus';
 import { buildBanMessage, setMyId } from '../shared/utils/auth';
 import networkManager from '../shared/services/NetworkManager';
+import { setupPushNotifications } from '../shared/services/pushNotifications';
+import LegalDocModal from '../features/legal/components/LegalDocModal';
+import { PRIVACY_POLICY_SECTIONS, PRIVACY_LAST_UPDATED } from '../features/legal/content/privacyPolicyText';
+import { TERMS_OF_SERVICE_SECTIONS, TERMS_LAST_UPDATED } from '../features/legal/content/termsOfServiceText';
 
 // WEB -> RN CHANGES (Login.jsx se):
 // - Google Sign-In (SocialLogin / Google Identity Services script) poora
@@ -33,9 +37,8 @@ import networkManager from '../shared/services/NetworkManager';
 //   (Firebase) hi tha. Agar aage native Google Sign-In chahiye ho to
 //   `@react-native-google-signin/google-signin` add karke yahan wapas
 //   laga sakte hain - bata dena, alag se kar denge.
-// - Legal (Privacy/Terms) modal abhi nahi laga - us feature ke content
-//   files (privacyPolicyText/termsOfServiceText) khali placeholders hain.
-//   Jab legal feature ban jaye, checkbox ke links wahan wire kar dena.
+// - Legal (Privacy/Terms): checkbox text ke "Privacy Policy" aur "Terms of Service"
+//   links tap karne par LegalDocModal khulta hai (Settings wala same modal).
 // - localStorage.setItem("z_token"/"my_id") -> networkManager.setToken()
 //   (AsyncStorage + in-memory cache) aur setMyId().
 // - window.location.href -> router.replace() (koi hard reload nahi).
@@ -43,6 +46,8 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [nudge, setNudge] = useState(false);
+  const [legalView, setLegalView] = useState<null | 'privacy' | 'terms'>(null);
+  const closeLegal = useCallback(() => setLegalView(null), []);
 
   const [emailMode, setEmailMode] = useState<'login' | 'signup' | 'forgot'>('login');
   const [email, setEmail] = useState('');
@@ -62,6 +67,10 @@ const Login = () => {
 
       await networkManager.setToken(response.data.token);
       await setMyId(response.data.player.id);
+
+      // Fresh login ke baad FCM token backend ko register karo (pehle sirf
+      // app restart par hota tha - is wajah se naye login par push nahi aati thi).
+      setupPushNotifications().catch((e) => console.error('push init after login (non-fatal):', e));
 
       if (!response.data.player.is_profile_created) {
         router.replace('/username-selection');
@@ -194,7 +203,14 @@ const Login = () => {
             {agreed && <Ionicons name="checkmark" size={12} color="#000000" />}
           </View>
           <Text style={[styles.agreeText, nudge && styles.agreeTextNudge]}>
-            I agree to the Privacy Policy and Terms of Service
+            I agree to the{' '}
+            <Text style={styles.agreeLink} onPress={() => setLegalView('privacy')}>
+              Privacy Policy
+            </Text>{' '}
+            and{' '}
+            <Text style={styles.agreeLink} onPress={() => setLegalView('terms')}>
+              Terms of Service
+            </Text>
           </Text>
         </Pressable>
 
@@ -303,6 +319,21 @@ const Login = () => {
           </View>
         )}
       </ScrollView>
+
+      <LegalDocModal
+        show={legalView === 'privacy'}
+        onClose={closeLegal}
+        title="Privacy Policy"
+        lastUpdated={PRIVACY_LAST_UPDATED}
+        sections={PRIVACY_POLICY_SECTIONS}
+      />
+      <LegalDocModal
+        show={legalView === 'terms'}
+        onClose={closeLegal}
+        title="Terms of Service"
+        lastUpdated={TERMS_LAST_UPDATED}
+        sections={TERMS_OF_SERVICE_SECTIONS}
+      />
     </KeyboardAvoidingView>
   );
 };
@@ -323,6 +354,7 @@ const styles = StyleSheet.create({
   checkboxChecked: { backgroundColor: '#ffffff', borderColor: '#ffffff' },
   agreeText: { color: '#a1a1aa', fontSize: 12, flex: 1 },
   agreeTextNudge: { color: '#f87171' },
+  agreeLink: { color: '#ffffff', textDecorationLine: 'underline', fontWeight: '600' },
   card: { width: '100%', maxWidth: 320, gap: 12 },
   cardTitle: { color: '#f4f4f5', fontSize: 17, fontWeight: '600', marginBottom: 4 },
   field: { gap: 4 },

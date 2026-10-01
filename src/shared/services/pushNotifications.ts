@@ -85,6 +85,7 @@ async function registerTokenWithBackend(deviceToken: string) {
       { token: deviceToken, platform: Platform.OS },
       { headers: { Authorization: `Bearer ${authToken}` } }
     );
+    console.log('[PUSH] token registered with backend:', deviceToken.slice(0, 16) + '...');
   } catch (e) {
     console.error('push token register failed', e);
   }
@@ -111,7 +112,10 @@ export async function setupPushNotifications(): Promise<void> {
       const req = await Notifications.requestPermissionsAsync();
       granted = req.granted;
     }
-    if (!granted) return; // user ne deny kar diya
+    if (!granted) {
+      console.log('[PUSH] notification permission denied');
+      return; // user ne deny kar diya
+    }
 
     tokenSub?.remove();
     receivedSub?.remove();

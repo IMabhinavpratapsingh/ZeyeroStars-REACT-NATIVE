@@ -187,15 +187,33 @@ export default function useFeedState() {
         hashtag: args.hashtag,
         imageUrl,
       });
-      const newPost: FeedPost | undefined = res.data.post;
-      if (newPost) {
-        setPosts((prev) => [newPost, ...prev]);
-        offsetRef.current += 1;
-        cache.offset = offsetRef.current;
+      const newPost: FeedPost | undefined = res.data?.post;
+
+      // Backend ka `post` (agar aaye bhi) aksar `players` join ke bina hota hai,
+      // aur kuch responses mein `post` hota hi nahi - isliye pehle page ko
+      // turant dobara fetch karte hain (sahi username/avatar ke saath).
+      // Fetch fail ho to fallback: newPost ho to top par daal do.
+      try {
+        const feedRes = await getFeedPosts(0, FEED_PAGE_SIZE);
+        let list: FeedPost[] = feedRes.data.posts || [];
+        if (newPost && !list.some((p) => p.id === newPost.id)) {
+          list = [newPost, ...list];
+        }
+        setPosts(list);
+        offsetRef.current = list.length;
+        cache.offset = list.length;
+        cache.loadedOnce = true;
+        setHasMore(!!feedRes.data.has_more);
+      } catch {
+        if (newPost) {
+          setPosts((prev) => [newPost, ...prev]);
+          offsetRef.current += 1;
+          cache.offset = offsetRef.current;
+        }
       }
       return newPost;
     },
-    [setPosts]
+    [setPosts, setHasMore]
   );
 
   // Post delete hone ke baad list se turant hata do (PostDetailModal ka

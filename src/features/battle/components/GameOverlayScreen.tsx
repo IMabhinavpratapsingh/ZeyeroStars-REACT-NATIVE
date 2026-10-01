@@ -1,9 +1,9 @@
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { StyleSheet } from 'react-native';
 import useWebSocket from '../../../shared/hooks/useWebSocket';
 import { PersistentSlide } from '../../../shared/components/motion/ScreenTransition';
 import useGameOverlays from '../../dashboard/hooks/useGameOverlays';
-import { subscribeOpenGame, setGameActive } from '../../../shared/utils/gameOverlayBus';
+import { subscribeOpenGame, setGameActive, requestCloseAllForGame, subscribeCloseGameMenus } from '../../../shared/utils/gameOverlayBus';
 import { setFullscreenOverlayOpen } from '../../../shared/utils/fullscreenOverlayBus';
 import { showAlert } from '../../../shared/utils/alertBus';
 import { getMyId } from '../../../shared/utils/auth';
@@ -14,6 +14,7 @@ import BluffModeSelectModal from '../../bluff/components/BluffModeSelectModal';
 import BluffLobbyScreen from '../../bluff/components/BluffLobbyScreen';
 import BluffLobbyMinimizedBar from '../../bluff/components/BluffLobbyMinimizedBar';
 import BluffGamePage from '../../bluff/components/BluffGamePage';
+import MatchFoundLoading from './MatchFoundLoading';
 
 // GameOverlayScreen - "Game" bottom-nav tab. Rooms/DM ki tarah hi ek
 // PERSISTENT, self-contained overlay - hamesha mounted rehta hai
@@ -24,13 +25,11 @@ import BluffGamePage from '../../bluff/components/BluffGamePage';
 // bolta hai - waisa hi indirection jaisa Rooms/DM ke liye navOverlayBus
 // use hota hai, taaki BottomNav ko is state ka seedha maalik na hona pade.
 export default function GameOverlayScreen() {
-  const closeOtherScreensForGameStart = () => {
-    // Web version mein yahan Rooms/DM/Shop/Profile/Communities/post bhi
-    // force-close hote the. Yahan sirf fullscreen-overlay flag set karna
-    // kaafi hai - PostDetailModal jaisi cheezein khud apne close se yeh
-    // flag hata deti hain, aur is app mein Rooms/DM apne slide-panel
-    // hidden hi rehte hain jab tak explicitly khola na jaaye.
-  };
+  // Game shuru hote hi Rooms/DM/Shop/Profile/Communities/Search/... sab band -
+  // unka owner `(tabs)/_layout.tsx` hai, wahi gameOverlayBus se sunke band karta hai.
+  const closeOtherScreensForGameStart = useCallback(() => {
+    requestCloseAllForGame();
+  }, []);
 
   const game = useGameOverlays({ showToast: (m) => showAlert(m, 'info'), closeOtherScreensForGameStart });
   useWebSocket(game.wsHandlers);
@@ -44,6 +43,9 @@ export default function GameOverlayScreen() {
     game.openBattleGameSelect();
   }), [game]);
 
+  // Home/Rooms/DM/... dabane par game menus band.
+  useEffect(() => subscribeCloseGameMenus(game.closeGameMenus), [game.closeGameMenus]);
+
   useEffect(() => {
     setGameActive(game.isGameActive);
   }, [game.isGameActive]);
@@ -51,10 +53,10 @@ export default function GameOverlayScreen() {
   // Actual match/table full-screen hote hi Header/BottomNav dono chhupa do
   // (PostDetailModal jaisa hi fullscreenOverlayBus).
   useEffect(() => {
-    const isFullscreenMatch = game.battleActive || game.showBluffGamePage;
+    const isFullscreenMatch = game.battleActive || game.showBluffGamePage || !!game.matchFound;
     setFullscreenOverlayOpen(isFullscreenMatch);
     return () => setFullscreenOverlayOpen(false);
-  }, [game.battleActive, game.showBluffGamePage]);
+  }, [game.battleActive, game.showBluffGamePage, game.matchFound]);
 
   return (
     <>
@@ -123,6 +125,8 @@ export default function GameOverlayScreen() {
         onSubmitSkill={game.submitBattleSkill}
         onClose={game.closeBattle}
       />
+
+      <MatchFoundLoading show={!!game.matchFound} kind={game.matchFound} />
     </>
   );
 }

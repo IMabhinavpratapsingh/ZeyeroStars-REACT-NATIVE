@@ -8,7 +8,7 @@
 // Moon/Sun) -> Ionicons equivalents (flame/water/leaf/snow/moon/sunny),
 // same icon family used across the rest of this RN codebase.
 
-export type SigilId = 'ember' | 'tide' | 'bloom' | 'frost' | 'shadow' | 'dawn';
+export type SigilId = 'ember' | 'tide' | 'bloom' | 'frost' | 'shadow' | 'dawn' | 'wild';
 
 export interface Sigil {
   id: SigilId;
@@ -26,8 +26,12 @@ export const SIGILS: Sigil[] = [
   { id: 'dawn', name: 'Dawn', icon: 'sunny', color: '#facc15' },
 ];
 
+// Joker / Wild - har call par sach maana jaata hai (server: WILD_ID = 'wild').
+// SIGILS list mein nahi hai kyunki wild kabhi "call" nahi hota.
+export const WILD_SIGIL: Sigil = { id: 'wild', name: 'Joker', icon: 'star', color: '#e879f9' };
+
 export const sigilById = (id: string | null | undefined): Sigil | undefined =>
-  SIGILS.find((s) => s.id === id);
+  id === 'wild' ? WILD_SIGIL : SIGILS.find((s) => s.id === id);
 
 // Default settings - inn sabko later server/room-settings se override kiya
 // ja sakta hai. Yeh sirf frontend fallback defaults hain.
@@ -35,7 +39,8 @@ export const DEFAULT_SETTINGS = {
   handSize: 5,
   doomMax: 6,
   maxPlayCount: 3,
-  copiesPerSigil: 8,
+  activeSigils: 3,
+  wildCards: 2,
 };
 
 export const DOOM_LABEL = 'Trigger Shot';

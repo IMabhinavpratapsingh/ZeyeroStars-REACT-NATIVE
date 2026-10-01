@@ -108,6 +108,12 @@ export async function setupPushNotifications(): Promise<void> {
         name: 'Default',
         importance: Notifications.AndroidImportance.MAX,
       });
+      // "Match found" push (matchmaking/bluff) ka channel - backend channel_id="game".
+      await Notifications.setNotificationChannelAsync('game', {
+        name: 'Game',
+        importance: Notifications.AndroidImportance.MAX,
+        sound: 'default',
+      });
       // Backend (push_service.py) channel_id="messages" bhejta hai - ye channel
       // na ho to Android 8+ par notification sahi importance/sound ke bina aata hai.
       await Notifications.setNotificationChannelAsync('messages', {

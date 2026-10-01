@@ -1,184 +1,237 @@
-import React, { memo, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { Pressable, StyleSheet, Text, View, useWindowDimensions, type LayoutChangeEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Defs, Ellipse, LinearGradient as SvgGradient, Polygon, Stop } from 'react-native-svg';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AvatarLayers, { type EquippedByCategory } from '../../avatar/components/AvatarLayers';
-import RankBadge from '../../../shared/components/RankBadge';
+import { getRankStyle } from '../../../shared/utils/rankStyles';
 import useBackButtonHandler from '../../../shared/hooks/useBackButtonHandler';
 import { AVATAR_ASPECT_RATIO_NUM } from '../../avatar/utils/avatarAssets';
+import { FIELD } from '../../../shared/utils/profileFields';
+import { getEquippedByCategory } from '../../../shared/utils/profileHelpers';
+import useItemsCatalog from '../../../shared/hooks/useItemsCatalog';
 
 const MAX_HP = 300;
+const HP_SEGMENTS = 7;
 
-const HpBar = ({ hp, size = 'sm' }: { hp: number; size?: 'sm' | 'lg' }) => {
-  const pct = Math.max(0, Math.min(100, (hp / MAX_HP) * 100));
-  const color = pct > 50 ? '#4ade80' : pct > 20 ? '#facc15' : '#ef4444';
-  return (
-    <View style={[styles.hpTrack, { height: size === 'lg' ? 12 : 8 }]}>
-      <View style={[styles.hpFill, { width: `${pct}%`, backgroundColor: color }]} />
-    </View>
-  );
+// Side themes - opponent upar (red/fire), me neeche (blue/lightning).
+const THEME = {
+  opp: { main: '#ef4444', soft: '#fb7185', glow: 'rgba(239,68,68,0.55)', panel: ['#2a0b12', '#10060a'] as const, hp: ['#ef4444', '#fb7185'] as const },
+  me: { main: '#38bdf8', soft: '#7dd3fc', glow: 'rgba(56,189,248,0.55)', panel: ['#07192b', '#050c18'] as const, hp: ['#06b6d4', '#38bdf8'] as const },
 };
 
-const StatPill = ({ label, value }: { label: string; value: number | string }) => (
-  <View style={styles.statPill}>
-    <Text style={styles.statPillLabel}>{label}</Text>
-    <Text style={styles.statPillValue}>{value}</Text>
-  </View>
-);
+/* ---------------- Skill icon (name se guess - backend icon nahi bhejta) ---------------- */
+type SkillMeta = { icon: string; color: string };
+const SKILL_META_RULES: [RegExp, SkillMeta][] = [
+  [/heal|restor|regen|cure|life/i, { icon: 'heart-plus', color: '#4ade80' }],
+  [/shield|guard|block|barrier|ward|armor/i, { icon: 'shield', color: '#60a5fa' }],
+  [/poison|venom|toxic|plague/i, { icon: 'skull', color: '#a78bfa' }],
+  [/fire|flame|burn|inferno|blaze|ember/i, { icon: 'fire', color: '#fb923c' }],
+  [/counter|reflect|parry|mirror/i, { icon: 'swap-horizontal', color: '#22d3ee' }],
+  [/thunder|lightning|volt|shock|zap|storm/i, { icon: 'lightning-bolt', color: '#facc15' }],
+  [/berserk|rage|fury|frenzy/i, { icon: 'sword-cross', color: '#38bdf8' }],
+];
+const skillMeta = (name?: string): SkillMeta =>
+  SKILL_META_RULES.find(([re]) => re.test(name || ''))?.[1] || { icon: 'sword', color: '#f87171' };
 
-/* ---------------- Player card - avatar full-bleed, overlays on top ---------------- */
-const PlayerCard = ({
-  profile,
-  hp,
-  borderColor,
-  glow,
-  children,
+/* ---------------- Chamfered (angled-corner) panel - SVG polygon background ---------------- */
+const ChamferBox = ({
+  colors, stroke, cut = 14, strokeWidth = 1.5, style, children,
 }: {
-  profile: any;
-  hp: number;
-  borderColor: string;
-  glow?: boolean;
+  colors: readonly [string, string];
+  stroke: string;
+  cut?: number;
+  strokeWidth?: number;
+  style?: any;
   children?: React.ReactNode;
 }) => {
-  const equippedByCategory: EquippedByCategory = profile?.equippedByCategory || {};
-
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  const onLayout = (e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    if (width !== size.w || height !== size.h) setSize({ w: width, h: height });
+  };
+  const { w, h } = size;
+  const c = Math.min(cut, w / 2, h / 2);
+  const pts = `${c},0 ${w - c},0 ${w},${c} ${w},${h - c} ${w - c},${h} ${c},${h} 0,${h - c} 0,${c}`;
   return (
-    <View style={styles.cardOuter}>
-      <View
-        style={[
-          styles.cardFrame,
-          { borderColor },
-          glow && styles.cardGlow,
-          { aspectRatio: AVATAR_ASPECT_RATIO_NUM },
-        ]}
-      >
-        <View style={styles.avatarPad}>
-          <AvatarLayers equippedByCategory={equippedByCategory} photoUrl={profile?.avatar_url} exactFit />
-        </View>
+    <View style={style} onLayout={onLayout}>
+      {w > 0 && (
+        <Svg width={w} height={h} style={StyleSheet.absoluteFill} pointerEvents="none">
+          <Defs>
+            <SvgGradient id="cg" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor={colors[0]} />
+              <Stop offset="1" stopColor={colors[1]} />
+            </SvgGradient>
+          </Defs>
+          <Polygon points={pts} fill="url(#cg)" stroke={stroke} strokeWidth={strokeWidth} />
+        </Svg>
+      )}
+      {children}
+    </View>
+  );
+};
 
-        <View style={styles.topOverlay}>
-          <Text style={styles.username} numberOfLines={1}>{profile?.username || '...'}</Text>
-          {profile?.power != null && <StatPill label="PWR" value={profile.power} />}
-        </View>
-
-        <View style={styles.bottomOverlay}>
-          {profile?.rank != null && (
-            <View style={styles.rankRow}>
-              <RankBadge rank={profile.rank} size="sm" />
-            </View>
-          )}
-          {children}
-        </View>
-      </View>
-
-      <View style={styles.hpWrap}>
-        <HpBar hp={hp} />
-        <Text style={styles.hpText}>{Math.max(0, hp)} / {MAX_HP} HP</Text>
+/* ---------------- Segmented HP bar ---------------- */
+const SegHpBar = ({ hp, side }: { hp: number; side: 'opp' | 'me' }) => {
+  const t = THEME[side];
+  const pct = Math.max(0, Math.min(1, hp / MAX_HP));
+  const w = useSharedValue(pct);
+  useEffect(() => {
+    w.value = withTiming(pct, { duration: 450, easing: Easing.out(Easing.cubic) });
+  }, [pct, w]);
+  const fillStyle = useAnimatedStyle(() => ({ width: `${w.value * 100}%` }));
+  return (
+    <View style={styles.hpTrack}>
+      <Animated.View style={[styles.hpFillWrap, fillStyle]}>
+        <LinearGradient colors={t.hp} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
+      </Animated.View>
+      <View style={styles.hpDividers} pointerEvents="none">
+        {Array.from({ length: HP_SEGMENTS - 1 }).map((_, i) => (
+          <View key={i} style={styles.hpDivider} />
+        ))}
       </View>
     </View>
   );
 };
 
-const OpponentCard = ({ profile, hp, skills }: { profile: any; hp: number; skills: any[] }) => (
-  <PlayerCard profile={profile} hp={hp} borderColor="#262626">
-    <View style={styles.skillChipsRow}>
-      {(skills || []).map((s) => (
-        <View key={s.skill_id} style={styles.skillChip}>
-          <Text style={styles.skillChipText}>{s.name}</Text>
-        </View>
-      ))}
+/* ---------------- Mini skill tile (player panel ke andar) ---------------- */
+const MiniSkill = ({ skill, side, selected }: { skill: any; side: 'opp' | 'me'; selected?: boolean }) => {
+  const meta = skillMeta(skill.name);
+  const t = THEME[side];
+  return (
+    <View style={styles.miniWrap}>
+      <View style={[styles.miniTile, { borderColor: selected ? t.soft : 'rgba(255,255,255,0.14)' }, selected && { backgroundColor: 'rgba(56,189,248,0.18)' }]}>
+        <MaterialCommunityIcons name={meta.icon as any} size={17} color={meta.color} />
+      </View>
+      <Text style={[styles.miniName, selected && { color: '#fff' }]} numberOfLines={1}>{skill.name}</Text>
     </View>
-  </PlayerCard>
-);
+  );
+};
 
-const MyCard = ({
-  profile,
-  hp,
-  skills,
-  selectable,
-  selectedSkillId,
-  onChangeSkill,
-  submitted,
-  skillCooldowns,
+/* ---------------- Player row: avatar tile + info panel ---------------- */
+const PlayerRow = ({
+  profile, hp, skills, side, avatarW, selectedSkillId,
 }: {
   profile: any;
   hp: number;
   skills: any[];
-  selectable: boolean;
-  selectedSkillId: string | number | null;
-  onChangeSkill: (id: string | number) => void;
-  submitted: boolean;
-  skillCooldowns: Record<string, number>;
+  side: 'opp' | 'me';
+  avatarW: number;
+  selectedSkillId?: string | number | null;
 }) => {
-  const selectedSkill = (skills || []).find((s) => s.skill_id === selectedSkillId);
-  const cooldowns = skillCooldowns || {};
-
-  const handlePick = (skillId: string | number) => {
-    if (!selectable) return;
-    if (cooldowns[skillId]) return;
-    onChangeSkill(skillId);
-  };
+  const t = THEME[side];
+  const { itemsById } = useItemsCatalog();
+  // Battle ko raw players row milti hai (`equipped_items` = sirf ids) - isliye
+  // yahin category-wise map karte hain, taaki back/front/background/frame sab dikhein.
+  const equippedByCategory: EquippedByCategory = useMemo(
+    () => profile?.equippedByCategory || getEquippedByCategory(profile?.[FIELD.equipped], itemsById),
+    [profile, itemsById]
+  );
+  const rankStyle = profile?.rank != null ? getRankStyle(profile.rank) : null;
+  // Room jaisa hi: canvas apne asli 350x250 shape mein (exactFit + aspectRatio),
+  // pfp canvas ke andar khud round hoti hai (AvatarBase ka photo circle).
 
   return (
-    <View style={styles.cardOuter}>
-      <PlayerCard profile={profile} hp={hp} borderColor="rgba(96,165,250,0.6)" glow>
-        <View style={styles.skillChipsRow}>
-          {(skills || []).map((s) => (
-            <View
-              key={s.skill_id}
-              style={[styles.skillChip, selectedSkillId === s.skill_id && styles.skillChipSelected]}
-            >
-              <Text style={[styles.skillChipText, selectedSkillId === s.skill_id && styles.skillChipTextSelected]}>
-                {s.name}
-              </Text>
-            </View>
-          ))}
-        </View>
-      </PlayerCard>
-
-      <View style={styles.skillButtonsRow}>
-        {(skills || []).slice(0, 3).map((s) => {
-          const isSelected = selectedSkillId === s.skill_id;
-          const roundsLeft = cooldowns[s.skill_id];
-          const isLocked = !!roundsLeft;
-          return (
-            <Pressable
-              key={s.skill_id}
-              onPress={() => handlePick(s.skill_id)}
-              disabled={!selectable || isLocked}
-              style={[
-                styles.skillButton,
-                isLocked ? styles.skillButtonLocked : isSelected ? styles.skillButtonSelected : styles.skillButtonNormal,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.skillButtonText,
-                  isLocked && styles.skillButtonTextLocked,
-                  isSelected && !isLocked && styles.skillButtonTextSelected,
-                ]}
-                numberOfLines={1}
-              >
-                {s.name}
-              </Text>
-              {isLocked && (
-                <View style={styles.lockRow}>
-                  <Ionicons name="lock-closed" size={9} color="#f87171" />
-                  <Text style={styles.lockText}>{roundsLeft}</Text>
-                </View>
-              )}
-            </Pressable>
-          );
-        })}
+    <View style={styles.playerRow}>
+      <View style={[styles.avatarTile, { width: avatarW, aspectRatio: AVATAR_ASPECT_RATIO_NUM, shadowColor: t.main }]}>
+        <AvatarLayers equippedByCategory={equippedByCategory} photoUrl={profile?.avatar_url} exactFit />
+        {/* Outline - canvas ke upar overlay (layout/aspect ratio nahi badalta) */}
+        <View pointerEvents="none" style={[styles.avatarOutline, { borderColor: t.main }]} />
+        <View pointerEvents="none" style={[styles.avatarOutlineInner, { borderColor: t.soft }]} />
       </View>
 
-      {!!selectedSkill?.description && (
-        <Text style={styles.selectedDescription}>
-          {submitted ? 'Locked In: ' : 'Selected: '}
-          <Text style={styles.selectedDescriptionBold}>{selectedSkill.name}</Text> — {selectedSkill.description}
-        </Text>
-      )}
+      <ChamferBox colors={t.panel} stroke={t.main} cut={16} style={styles.infoPanel}>
+        <View style={styles.infoInner}>
+          <View style={styles.nameRow}>
+            <Text style={[styles.username, side === 'opp' && { color: '#f5d0fe' }]} numberOfLines={1}>
+              {profile?.username || '...'}
+            </Text>
+            {profile?.power != null && (
+              <View style={styles.pwrPill}>
+                <Text style={styles.pwrLabel}>PWR</Text>
+                <Text style={styles.pwrValue}>{profile.power}</Text>
+              </View>
+            )}
+          </View>
+
+          {rankStyle && (
+            <View style={[styles.rankPill, { borderColor: rankStyle.color + '66' }]}>
+              <MaterialCommunityIcons name="shield-star" size={14} color={rankStyle.color} />
+              <Text style={[styles.rankText, { color: rankStyle.color }]}>
+                {rankStyle.tierName.toUpperCase()} {profile.rank}
+              </Text>
+            </View>
+          )}
+
+          <View style={styles.miniRow}>
+            {(skills || []).slice(0, 3).map((sk) => (
+              <MiniSkill key={sk.skill_id} skill={sk} side={side} selected={side === 'me' && selectedSkillId === sk.skill_id} />
+            ))}
+          </View>
+
+          <View style={styles.hpRow}>
+            <View style={{ flex: 1 }}>
+              <SegHpBar hp={hp} side={side} />
+            </View>
+            <Text style={styles.hpText}>{Math.max(0, hp)} / {MAX_HP} HP</Text>
+          </View>
+        </View>
+      </ChamferBox>
     </View>
+  );
+};
+
+/* ---------------- Big skill card (neeche dock mein) ---------------- */
+const SkillCard = ({
+  skill, selected, locked, roundsLeft, disabled, onPress,
+}: {
+  skill: any; selected: boolean; locked: boolean; roundsLeft?: number; disabled: boolean; onPress: () => void;
+}) => {
+  const meta = skillMeta(skill.name);
+  const lift = useSharedValue(selected ? 1 : 0);
+  useEffect(() => {
+    lift.value = withTiming(selected ? 1 : 0, { duration: 160, easing: Easing.out(Easing.cubic) });
+  }, [selected, lift]);
+  const liftStyle = useAnimatedStyle(() => ({ transform: [{ translateY: -6 * lift.value }, { scale: 1 + 0.03 * lift.value }] }));
+
+  return (
+    <Animated.View style={[styles.skillCardWrap, liftStyle]}>
+      {selected && !locked && (
+        <View style={styles.selectedTag}>
+          <Text style={styles.selectedTagText}>SELECTED</Text>
+        </View>
+      )}
+      <Pressable
+        onPress={onPress}
+        disabled={disabled}
+        style={[
+          styles.skillCard,
+          { borderColor: selected && !locked ? '#7dd3fc' : meta.color + '77', backgroundColor: meta.color + '14' },
+          selected && !locked && styles.skillCardSelected,
+          locked && { opacity: 0.4 },
+        ]}
+      >
+        <View style={[styles.skillIconRing, { borderColor: meta.color + 'aa' }]}>
+          <MaterialCommunityIcons name={meta.icon as any} size={34} color={meta.color} />
+        </View>
+        <Text style={styles.skillCardName} numberOfLines={1}>{skill.name}</Text>
+        <View style={styles.cdPill}>
+          {locked ? (
+            <>
+              <Ionicons name="lock-closed" size={10} color="#f87171" />
+              <Text style={[styles.cdText, { color: '#f87171' }]}>{roundsLeft}</Text>
+            </>
+          ) : (
+            <>
+              <Ionicons name="timer-outline" size={11} color="#7dd3fc" />
+              <Text style={styles.cdText}>{skill.cooldown ? `CD ${skill.cooldown}` : 'READY'}</Text>
+            </>
+          )}
+        </View>
+      </Pressable>
+    </Animated.View>
   );
 };
 
@@ -336,6 +389,7 @@ const BattlePage = ({
 }: BattlePageProps) => {
   const [timeLeft, setTimeLeft] = useState(selectionTime || 20);
   const insets = useSafeAreaInsets();
+  const { height: winH, width: winW } = useWindowDimensions();
   const [selectedSkillId, setSelectedSkillId] = useState<string | number | null>(null);
   const hasSubmittedRef = useRef(false);
   const selectedSkillRef = useRef<string | number | null>(null);
@@ -377,6 +431,18 @@ const BattlePage = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
+  // Timer <= 5s: pulse
+  const pulse = useSharedValue(0);
+  const danger = phase === 'selecting' && timeLeft <= 5;
+  useEffect(() => {
+    if (danger) {
+      pulse.value = withRepeat(withTiming(1, { duration: 450, easing: Easing.inOut(Easing.quad) }), -1, true);
+    } else {
+      pulse.value = withTiming(0, { duration: 150 });
+    }
+  }, [danger, pulse]);
+  const timerPulse = useAnimatedStyle(() => ({ opacity: 1 - 0.35 * pulse.value }));
+
   const handleChangeSkill = (skillId: string | number) => {
     if (phase !== 'selecting' || hasSubmittedRef.current) return;
     selectedSkillRef.current = skillId;
@@ -388,43 +454,103 @@ const BattlePage = ({
   if (!show) return null;
 
   const selectable = phase === 'selecting' && !hasSubmittedRef.current;
+  const cooldowns = mySkillCooldowns || {};
+  const selectedSkill = (mySkillData || []).find((s) => s.skill_id === selectedSkillId);
+
+  // Avatar tile ka size screen height se - chhote phones par rows compress hon.
+  const rowH = (winH - insets.top - insets.bottom - 330) / 2;
+  const avatarW = Math.max(110, Math.min(winW * 0.4, rowH * AVATAR_ASPECT_RATIO_NUM, 170));
+
+  let statusMain = 'Your turn';
+  let statusSub = 'Select a skill';
+  if (phase === 'locked' || hasSubmittedRef.current) { statusMain = 'Locked in'; statusSub = 'Waiting for opponent...'; }
+  if (phase === 'round_over') { statusMain = 'Time\'s up'; statusSub = 'Calculating result...'; }
+  if (phase === 'result') { statusMain = 'Round over'; statusSub = 'Next round soon'; }
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top }]}>
-      <View style={styles.timerBar}>
-        <View style={styles.timerBarTitleRow}>
-          <Ionicons name="flash-outline" size={12} color="#9a9a9a" />
-          <Text style={styles.timerBarTitle}>BATTLE</Text>
+    <View style={[styles.screen, { paddingTop: insets.top, paddingBottom: Math.max(insets.bottom, 8) }]}>
+      {/* Arena background */}
+      <LinearGradient colors={['#05060f', '#0a0b1c', '#05060f']} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={['rgba(239,68,68,0.16)', 'transparent']} style={styles.bgTop} pointerEvents="none" />
+      <LinearGradient colors={['transparent', 'rgba(56,189,248,0.16)']} style={styles.bgBottom} pointerEvents="none" />
+      <Svg width={winW} height={winH} style={StyleSheet.absoluteFill} pointerEvents="none">
+        <Ellipse cx={winW / 2} cy={winH * 0.5} rx={winW * 0.46} ry={winH * 0.075} stroke="rgba(125,211,252,0.18)" strokeWidth={1.5} fill="none" />
+        <Ellipse cx={winW / 2} cy={winH * 0.5} rx={winW * 0.3} ry={winH * 0.048} stroke="rgba(125,211,252,0.12)" strokeWidth={1} fill="none" />
+      </Svg>
+
+      {/* Timer chip */}
+      <View style={styles.timerWrap}>
+        <ChamferBox colors={['#1a0d14', '#0c0710']} stroke={danger ? '#ef4444' : '#7f1d1d'} cut={14} strokeWidth={2} style={styles.timerChip}>
+          <View style={styles.timerInner}>
+            <View style={styles.timerTitleRow}>
+              <Ionicons name="flash" size={11} color="#9a9a9a" />
+              <Text style={styles.timerTitle}>BATTLE</Text>
+            </View>
+            {phase === 'selecting' ? (
+              <Animated.Text style={[styles.timerValue, danger && { color: '#f87171' }, timerPulse]}>{timeLeft}s</Animated.Text>
+            ) : (
+              <Text style={styles.timerNote} numberOfLines={1}>{statusSub}</Text>
+            )}
+          </View>
+        </ChamferBox>
+      </View>
+
+      {/* Opponent */}
+      <View style={styles.rowSlot}>
+        <PlayerRow profile={opponentProfile} hp={opponentHp} skills={opponentSkillData} side="opp" avatarW={avatarW} />
+      </View>
+
+      {/* VS */}
+      <View style={styles.vsWrap}>
+        <Text style={styles.vsText}>
+          <Text style={{ color: '#fb7185' }}>V</Text>
+          <Text style={{ color: '#7dd3fc' }}>S</Text>
+        </Text>
+      </View>
+
+      {/* Me */}
+      <View style={styles.rowSlot}>
+        <PlayerRow profile={myProfile} hp={myHp} skills={mySkillData} side="me" avatarW={avatarW} selectedSkillId={selectedSkillId} />
+      </View>
+
+      {/* Skill dock */}
+      <ChamferBox colors={['#0a1226', '#060913']} stroke="#1e3a5f" cut={22} style={styles.dock}>
+        <View style={styles.dockInner}>
+          <View style={styles.skillCardsRow}>
+            {(mySkillData || []).slice(0, 3).map((s) => (
+              <SkillCard
+                key={s.skill_id}
+                skill={s}
+                selected={selectedSkillId === s.skill_id}
+                locked={!!cooldowns[s.skill_id]}
+                roundsLeft={cooldowns[s.skill_id]}
+                disabled={!selectable || !!cooldowns[s.skill_id]}
+                onPress={() => handleChangeSkill(s.skill_id)}
+              />
+            ))}
+          </View>
+          {!!selectedSkill?.description && (
+            <Text style={styles.skillDesc} numberOfLines={2}>
+              {hasSubmittedRef.current ? 'Locked In: ' : ''}
+              <Text style={styles.skillDescBold}>{selectedSkill.name}</Text> — {selectedSkill.description}
+            </Text>
+          )}
         </View>
-        {phase === 'selecting' && (
-          <Text style={[styles.timerValue, timeLeft <= 5 && styles.timerValueDanger]}>{timeLeft}s</Text>
-        )}
-        {phase === 'locked' && <Text style={styles.timerNote}>Skill locked in, waiting for opponent...</Text>}
-        {phase === 'round_over' && <Text style={styles.timerNote}>Time's up, calculating result...</Text>}
-      </View>
+      </ChamferBox>
 
-      <View style={styles.opponentSection}>
-        <OpponentCard profile={opponentProfile} hp={opponentHp} skills={opponentSkillData} />
-      </View>
+      {/* Status pill */}
+      <ChamferBox colors={['#0c1a30', '#08101e']} stroke="#38bdf8" cut={12} style={styles.statusPill}>
+        <View style={styles.statusInner}>
+          <MaterialCommunityIcons name="rhombus-split" size={14} color="#38bdf8" />
+          <Text style={styles.statusMain}>{statusMain}</Text>
+          <Text style={styles.statusDot}>•</Text>
+          <Text style={styles.statusSub}>{statusSub}</Text>
+        </View>
+      </ChamferBox>
 
-      <View style={styles.mySection}>
-        <MyCard
-          profile={myProfile}
-          hp={myHp}
-          skills={mySkillData}
-          selectable={selectable}
-          selectedSkillId={selectedSkillId}
-          onChangeSkill={handleChangeSkill}
-          submitted={hasSubmittedRef.current}
-          skillCooldowns={mySkillCooldowns}
-        />
-
-        {!hasSubmittedRef.current && phase === 'selecting' && timeLeft <= 5 && (
-          <Text style={styles.timeoutWarning}>
-            Time khatam hone par apni current selected skill hi submit ho jayegi!
-          </Text>
-        )}
-      </View>
+      {danger && !hasSubmittedRef.current && (
+        <Text style={styles.timeoutWarning}>Time khatam hone par current selected skill hi submit ho jayegi!</Text>
+      )}
 
       {phase === 'result' && <RoundResultPanel roundResult={roundResult} />}
 
@@ -436,77 +562,92 @@ const BattlePage = ({
 };
 
 const styles = StyleSheet.create({
-  screen: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#050505' },
-  timerBar: {
-    paddingVertical: 8, alignItems: 'center',
-    borderBottomWidth: 1, borderBottomColor: 'rgba(38,38,38,0.8)', backgroundColor: 'rgba(0,0,0,0.4)',
+  screen: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#05060f' },
+  bgTop: { position: 'absolute', top: 0, left: 0, right: 0, height: '45%' },
+  bgBottom: { position: 'absolute', bottom: 0, left: 0, right: 0, height: '45%' },
+  timerWrap: { alignItems: 'center', marginTop: 4 },
+  timerChip: { minWidth: 120, height: 54 },
+  timerInner: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 },
+  timerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  timerTitle: { fontSize: 10, fontWeight: '700', letterSpacing: 2, color: '#9a9a9a' },
+  timerValue: { fontSize: 24, fontWeight: '900', color: '#fb7185', marginTop: -2 },
+  timerNote: { fontSize: 10, color: '#c2c2c2', marginTop: 2, maxWidth: 150 },
+  rowSlot: { flex: 1, minHeight: 0, justifyContent: 'center', paddingHorizontal: 10 },
+  playerRow: { flexDirection: 'row', alignItems: 'center' },
+  avatarTile: { shadowOpacity: 0.75, shadowRadius: 14, elevation: 0, zIndex: 2 },
+  avatarOutline: { ...StyleSheet.absoluteFill, borderWidth: 2.5, borderRadius: 14 },
+  avatarOutlineInner: { ...StyleSheet.absoluteFill, margin: 3, borderWidth: 1, borderRadius: 11, opacity: 0.35 },
+  infoPanel: { flex: 1, marginLeft: -12, minHeight: 112 },
+  infoInner: { paddingLeft: 22, paddingRight: 12, paddingVertical: 8, gap: 5 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
+  username: { flex: 1, fontSize: 16, fontWeight: '800', color: '#fff' },
+  pwrPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 2,
+    borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.55)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)',
   },
-  timerBarTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  timerBarTitle: { fontSize: 11, fontWeight: '700', letterSpacing: 2, color: '#9a9a9a' },
-  timerValue: { fontSize: 24, fontWeight: '800', color: '#fff', marginTop: 2 },
-  timerValueDanger: { color: '#f87171' },
-  timerNote: { fontSize: 11, color: '#9a9a9a', marginTop: 4 },
-  opponentSection: {
-    flex: 1, minHeight: 0, alignItems: 'center', justifyContent: 'center',
-    borderBottomWidth: 1, borderBottomColor: 'rgba(38,38,38,0.6)', paddingHorizontal: 16, paddingVertical: 8,
+  pwrLabel: { fontSize: 9, color: '#9a9a9a', fontWeight: '700' },
+  pwrValue: { fontSize: 12, color: '#fff', fontWeight: '800' },
+  rankPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start',
+    paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, borderWidth: 1, backgroundColor: 'rgba(0,0,0,0.35)',
   },
-  mySection: { flex: 1, minHeight: 0, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 12, paddingHorizontal: 16, paddingVertical: 8 },
-  cardOuter: { width: '100%', maxWidth: 300, alignItems: 'center' },
-  cardFrame: {
-    width: '100%', borderRadius: 24, borderWidth: 2, overflow: 'hidden', backgroundColor: '#161616',
+  rankText: { fontSize: 12, fontWeight: '800', letterSpacing: 0.4 },
+  miniRow: { flexDirection: 'row', gap: 8 },
+  miniWrap: { alignItems: 'center', width: 52 },
+  miniTile: {
+    width: 38, height: 34, borderRadius: 9, borderWidth: 1, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.45)',
   },
-  cardGlow: { shadowColor: '#3b82f6', shadowOpacity: 0.3, shadowRadius: 14, elevation: 6 },
-  avatarPad: { ...StyleSheet.absoluteFill, padding: 10 },
-  topOverlay: {
-    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10,
-    paddingHorizontal: 10, paddingTop: 8, paddingBottom: 24,
-    flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
-    backgroundColor: 'rgba(0,0,0,0.5)',
+  miniName: { fontSize: 9, color: '#b5b5b5', marginTop: 2, fontWeight: '600' },
+  hpRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 1 },
+  hpTrack: {
+    height: 11, borderRadius: 6, overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.6)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
   },
-  username: { fontWeight: '700', fontSize: 12, color: '#fff', maxWidth: '60%' },
-  statPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 2,
-    borderRadius: 999, backgroundColor: 'rgba(0,0,0,0.7)', borderWidth: 1, borderColor: '#262626',
+  hpFillWrap: { height: '100%', borderRadius: 6, overflow: 'hidden' },
+  hpDividers: { ...StyleSheet.absoluteFill, flexDirection: 'row', justifyContent: 'space-evenly' },
+  hpDivider: { width: 2, height: '100%', backgroundColor: 'rgba(0,0,0,0.7)' },
+  hpText: { fontSize: 10, color: '#d4d4d4', fontWeight: '700' },
+  vsWrap: { alignItems: 'center', justifyContent: 'center', height: 44 },
+  vsText: {
+    fontSize: 40, fontWeight: '900', fontStyle: 'italic', letterSpacing: 2,
+    textShadowColor: 'rgba(168,85,247,0.8)', textShadowRadius: 14, textShadowOffset: { width: 0, height: 0 },
   },
-  statPillLabel: { fontSize: 10, color: '#9a9a9a' },
-  statPillValue: { fontSize: 10, fontWeight: '700', color: '#fff' },
-  bottomOverlay: {
-    position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 10,
-    paddingHorizontal: 10, paddingTop: 30, paddingBottom: 10, backgroundColor: 'rgba(0,0,0,0.85)',
+  dock: { marginHorizontal: 10, marginTop: 4 },
+  dockInner: { paddingHorizontal: 22, paddingTop: 16, paddingBottom: 10 },
+  skillCardsRow: { flexDirection: 'row', gap: 8 },
+  skillCardWrap: { flex: 1 },
+  selectedTag: {
+    position: 'absolute', top: -11, alignSelf: 'center', zIndex: 5, paddingHorizontal: 12, paddingVertical: 1,
+    borderRadius: 4, backgroundColor: '#0b2a4a', borderWidth: 1, borderColor: '#38bdf8',
   },
-  rankRow: { alignItems: 'center', marginBottom: 6 },
-  skillChipsRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 4 },
-  skillChip: {
-    paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, borderWidth: 1, borderColor: '#3f3f3f',
-    backgroundColor: 'rgba(0,0,0,0.7)',
+  selectedTagText: { fontSize: 8, fontWeight: '800', letterSpacing: 1, color: '#7dd3fc' },
+  skillCard: {
+    alignItems: 'center', paddingVertical: 10, paddingHorizontal: 4, borderRadius: 12, borderWidth: 1.5, gap: 4,
   },
-  skillChipSelected: { borderColor: '#60a5fa', backgroundColor: 'rgba(96,165,250,0.2)' },
-  skillChipText: { fontSize: 10, color: '#e0e0e0' },
-  skillChipTextSelected: { color: '#93c5fd' },
-  hpWrap: { width: '100%', marginTop: 6, paddingHorizontal: 4 },
-  hpTrack: { width: '100%', borderRadius: 999, backgroundColor: 'rgba(10,10,10,0.8)', borderWidth: 1, borderColor: '#262626', overflow: 'hidden' },
-  hpFill: { height: '100%', borderRadius: 999 },
-  hpText: { textAlign: 'center', fontSize: 10, color: '#6e6e6e', marginTop: 2 },
-  skillButtonsRow: { flexDirection: 'row', gap: 8, marginTop: 12, width: '100%' },
-  skillButton: {
-    flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2,
-    paddingHorizontal: 6, paddingVertical: 10, borderRadius: 12, borderWidth: 1,
+  skillCardSelected: { backgroundColor: 'rgba(56,189,248,0.16)', shadowColor: '#38bdf8', shadowOpacity: 0.8, shadowRadius: 10, elevation: 8 },
+  skillIconRing: {
+    width: 50, height: 50, borderRadius: 25, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.35)',
   },
-  skillButtonLocked: { opacity: 0.4, borderColor: '#262626', backgroundColor: 'rgba(0,0,0,0.6)' },
-  skillButtonSelected: { borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.2)' },
-  skillButtonNormal: { borderColor: '#262626', backgroundColor: 'rgba(10,10,10,0.7)' },
-  skillButtonText: { fontSize: 11, fontWeight: '700', color: '#c2c2c2', textAlign: 'center' },
-  skillButtonTextLocked: { color: '#6e6e6e' },
-  skillButtonTextSelected: { color: '#fff' },
-  lockRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  lockText: { fontSize: 9, fontWeight: '700', color: '#f87171' },
-  selectedDescription: { fontSize: 10, color: '#9a9a9a', marginTop: 8, textAlign: 'center', lineHeight: 14 },
-  selectedDescriptionBold: { fontWeight: '700', color: '#c2c2c2' },
+  skillCardName: { fontSize: 13, fontWeight: '800', color: '#fff' },
+  cdPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 12, paddingVertical: 2,
+    borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.5)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+  },
+  cdText: { fontSize: 11, fontWeight: '800', color: '#7dd3fc' },
+  skillDesc: { fontSize: 10, color: '#9a9a9a', textAlign: 'center', marginTop: 8, lineHeight: 14 },
+  skillDescBold: { fontWeight: '700', color: '#c2c2c2' },
+  statusPill: { alignSelf: 'center', marginTop: 6, minWidth: 220, height: 34 },
+  statusInner: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 18 },
+  statusMain: { fontSize: 12, fontWeight: '800', color: '#fff' },
+  statusDot: { fontSize: 12, color: '#6e6e6e' },
+  statusSub: { fontSize: 11, color: '#9a9a9a' },
+  timeoutWarning: { textAlign: 'center', fontSize: 10, color: '#f87171', marginTop: 4 },
   effectRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   effectText: { fontSize: 11 },
   effectValue: { fontSize: 11, fontWeight: '700' },
   effectTarget: { fontSize: 11, color: '#6e6e6e' },
-  timeoutWarning: { textAlign: 'center', fontSize: 11, color: '#f87171', marginTop: 8 },
   roundResultOverlay: {
     ...StyleSheet.absoluteFill, zIndex: 160, backgroundColor: 'rgba(0,0,0,0.85)',
     alignItems: 'center', justifyContent: 'center', padding: 16,

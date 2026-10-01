@@ -46,7 +46,7 @@ import { requestFeedScrollTopReload } from '../../shared/utils/feedScrollBus';
 import { subscribeOpenCommunity, requestOpenCommunityBySlug, requestOpenCommunityById } from '../../shared/utils/communityOpenBus';
 import { subscribeOpenProfile, type ProfileOpenPayload } from '../../shared/utils/profileOpenBus';
 import { subscribeFullscreenOverlay } from '../../shared/utils/fullscreenOverlayBus';
-import { requestOpenGame, subscribeGameActive } from '../../shared/utils/gameOverlayBus';
+import { requestOpenGame, subscribeGameActive, subscribeCloseAllForGame, requestCloseGameMenus } from '../../shared/utils/gameOverlayBus';
 import GameOverlayScreen from '../../features/battle/components/GameOverlayScreen';
 
 // ---------------------------------------------------------------------------
@@ -207,6 +207,7 @@ export default function TabsLayout() {
   }, []);
 
   const openShop = useCallback(() => {
+    requestCloseGameMenus();
     setShowRooms(false);
     setShowDM(false);
     setShowSearch(false);
@@ -215,6 +216,7 @@ export default function TabsLayout() {
   }, []);
 
   const openSearch = useCallback(() => {
+    requestCloseGameMenus();
     setShowRooms(false);
     setShowDM(false);
     setShowShop(false);
@@ -223,6 +225,7 @@ export default function TabsLayout() {
   }, []);
 
   const openNotifications = useCallback(() => {
+    requestCloseGameMenus();
     setShowRooms(false);
     setShowDM(false);
     setShowShop(false);
@@ -280,6 +283,7 @@ export default function TabsLayout() {
   // Kisi bhi overlay (Rooms/DM/Community) ko dusra kholne se pehle band
   // karo - warna do overlays ek saath stacked reh sakte hain.
   const closeAllOverlayPanels = useCallback(() => {
+    requestCloseGameMenus();
     setShowRooms(false);
     setShowDM(false);
     closeHeaderOverlays();
@@ -287,6 +291,7 @@ export default function TabsLayout() {
   }, [community, closeHeaderOverlays]);
 
   const openRooms = useCallback(() => {
+    requestCloseGameMenus();
     closeHeaderOverlays();
     setShowDM(false);
     community.closeAllCommunityPanels();
@@ -294,6 +299,7 @@ export default function TabsLayout() {
   }, [community, closeHeaderOverlays]);
 
   const openDM = useCallback(() => {
+    requestCloseGameMenus();
     closeHeaderOverlays();
     setShowRooms(false);
     community.closeAllCommunityPanels();
@@ -301,6 +307,7 @@ export default function TabsLayout() {
   }, [community, closeHeaderOverlays]);
 
   const openCommunities = useCallback(() => {
+    requestCloseGameMenus();
     closeHeaderOverlays();
     setShowRooms(false);
     setShowDM(false);
@@ -325,6 +332,34 @@ export default function TabsLayout() {
   // "Game" icon sirf gameOverlayBus se isse toggle karne ko bolta hai.
   const [isGameActive, setIsGameActive] = useState(false);
   useEffect(() => subscribeGameActive(setIsGameActive), []);
+
+  // Game (match found / table open) shuru hote hi baaki SAARI screens band -
+  // Rooms/DM/Communities/Shop/Search/Notifications/Store/Missions/Daily/
+  // Leaderboard/Rank rewards/Settings/Profile/Post/quick-actions sab.
+  // (Game select / lobby jaisi game ki apni screens GameOverlayScreen khud band karta hai.)
+  useEffect(
+    () =>
+      subscribeCloseAllForGame(() => {
+        setShowRooms(false);
+        setShowDM(false);
+        setShowShop(false);
+        setShowSearch(false);
+        setShowNotifications(false);
+        setShowStore(false);
+        setShowMissions(false);
+        setShowDailyPopup(false);
+        setShowLeaderboard(false);
+        setShowRankRewards(false);
+        setShowSettings(false);
+        setShowQuickActions(false);
+        setQuickActionsOpen(false);
+        setViewingProfile(null);
+        setNotifPost(null);
+        community.closeAllCommunityPanels();
+        if (pathname.includes('/profile')) router.push('/(tabs)/dashboard');
+      }),
+    [community, pathname, router],
+  );
 
   // Feed/PostDetailModal/@mentions se "community naam par tap" -> yahi
   // bus sunta hai aur community.openCommunityById() call karta hai (ya
@@ -417,7 +452,7 @@ export default function TabsLayout() {
   // Home button - ab Instagram jaisa: Tabs navigator ke andar
   // `router.push` yahan stack-push NAHI karta - yeh sirf us tab ko focus
   // karta hai (screen already mounted hai to turant switch hota hai).
-  const anyOverlayOpen = showRooms || showDM || community.showCommunities || !!community.openCommunity;
+  const anyOverlayOpen = showRooms || showDM || community.showCommunities || !!community.openCommunity || isGameActive;
 
   // SINGLE TAP: feed par wapas. Rooms/DM/Communities sab is persistent
   // shell ke upar overlay hain (route change nahi karte), isliye pehle

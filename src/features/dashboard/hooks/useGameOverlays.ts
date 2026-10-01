@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { API_BASE } from '../../../shared/config/config';
 import networkManager, { getToken } from '../../../shared/services/NetworkManager';
@@ -44,6 +44,39 @@ export default function useGameOverlays({ showToast, closeOtherScreensForGameSta
   const [roundResult, setRoundResult] = useState<any>(null);
   const [mySkillCooldowns, setMySkillCooldowns] = useState<Record<string, number>>({});
   const [matchEndData, setMatchEndData] = useState<any>(null);
+
+  // ---- "Match found" loading screen ----
+  // Match milte hi (battle: match_found -> setup_room tak, bluff: table
+  // bante hi) ek full-screen loading dikhta hai, phir game screen khulti hai.
+  const [matchFound, setMatchFound] = useState<null | 'battle' | 'bluff'>(null);
+  const matchFoundTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearMatchFoundTimer = useCallback(() => {
+    if (matchFoundTimerRef.current) {
+      clearTimeout(matchFoundTimerRef.current);
+      matchFoundTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleMatchFoundClear = useCallback(
+    (ms: number) => {
+      clearMatchFoundTimer();
+      matchFoundTimerRef.current = setTimeout(() => setMatchFound(null), ms);
+    },
+    [clearMatchFoundTimer]
+  );
+
+  useEffect(() => clearMatchFoundTimer, [clearMatchFoundTimer]);
+
+  // Game shuru hone par game ki apni menu screens (select / mode-select /
+  // lobby / chess) + baaki poori app ki screens band.
+  const closeMenusForGameStart = useCallback(() => {
+    setShowBattleGameSelect(false);
+    setShowBluffModeSelect(false);
+    setShowBluffLobbyScreen(false);
+    setShowChessFullScreen(false);
+    closeOtherScreensForGameStart();
+  }, [closeOtherScreensForGameStart]);
 
   // ---- Bluff Court state ----
   const [showBluffModeSelect, setShowBluffModeSelect] = useState(false);
@@ -94,6 +127,8 @@ export default function useGameOverlays({ showToast, closeOtherScreensForGameSta
         yourSeat: data.your_seat,
         yourHand: data.your_hand,
         callSigil: data.call_sigil,
+        roundSigils: data.round_sigils || [],
+        deck: data.deck || null,
         currentTurnSeat: data.current_turn_seat,
         pileCount: data.pile_count,
         phase: data.phase,
@@ -102,6 +137,9 @@ export default function useGameOverlays({ showToast, closeOtherScreensForGameSta
         settings: data.settings,
         lastActorSeat: data.last_actor_seat !== undefined ? data.last_actor_seat : (prev ? prev.lastActorSeat : null),
         timedOut: !!data.timed_out,
+        // Server ka bacha hua turn-time (seconds) -> absolute deadline (client clock)
+        turnEndsAt: data.turn_time_left != null ? Date.now() + data.turn_time_left * 1000 : null,
+        turnTime: (data.settings && data.settings.turnTime) || 20,
         reveal: data.reveal || null,
         gameOver: prev ? prev.gameOver : null,
       }));
@@ -128,6 +166,7 @@ export default function useGameOverlays({ showToast, closeOtherScreensForGameSta
   const handleMatchmakingError = useCallback(
     (data: any) => {
       setMatchmakingSearching(false);
+      setMatchFound(null);
       showToast(data.message || 'Could not join battle.');
     },
     [showToast]
@@ -135,13 +174,16 @@ export default function useGameOverlays({ showToast, closeOtherScreensForGameSta
 
   const handleMatchFound = useCallback((data: any) => {
     setMatchmakingSearching(false);
+    closeMenusForGameStart();
+    setMatchFound('battle');
+    scheduleMatchFoundClear(15000); // safety: setup_room na aaye to loading atke nahi
     setBattleActive(false);
     setBattlePhase('selecting');
     setRoundResult(null);
     setMatchEndData(null);
     setMySkillCooldowns({});
     networkManager.send({ type: 'ready', room_id: data.room_id });
-  }, []);
+  }, [closeMenusForGameStart, scheduleMatchFoundClear]);
 
   const handleSetupRoom = useCallback(
     (data: any) => {
@@ -156,10 +198,11 @@ export default function useGameOverlays({ showToast, closeOtherScreensForGameSta
       setMySkillCooldowns({});
       setBattlePhase('selecting');
       setBattleActive(true);
-      closeOtherScreensForGameStart();
+      closeMenusForGameStart();
+      scheduleMatchFoundClear(700); // game screen ke upar loading thodi der aur, phir fade-out
       networkManager.send({ type: 'setup_complete' });
     },
-    [closeOtherScreensForGameStart]
+    [closeMenusForGameStart, scheduleMatchFoundClear]
   );
 
   const handleBattleStart = useCallback((data: any) => {
@@ -230,6 +273,8 @@ export default function useGameOverlays({ showToast, closeOtherScreensForGameSta
   );
 
   const closeBattle = useCallback(() => {
+    clearMatchFoundTimer();
+    setMatchFound(null);
     setBattleActive(false);
     setBattlePhase('selecting');
     setMyBattleProfile(null);
@@ -258,6 +303,15 @@ export default function useGameOverlays({ showToast, closeOtherScreensForGameSta
   }, [showBattleGameSelect, bluffLobby]);
 
   const closeBattleGameSelect = useCallback(() => setShowBattleGameSelect(false), []);
+
+  // Doosra tab (Home/Rooms/DM/...) dabane par game ki menu screens band.
+  // Matchmaking chalti rahe to chalne do (Game tab dobara kholne par Cancel milega);
+  // Bluff lobby sirf minimize hota hai (state/bar bachi rehti hai).
+  const closeGameMenus = useCallback(() => {
+    setShowBattleGameSelect(false);
+    setShowBluffModeSelect(false);
+    setShowBluffLobbyScreen(false);
+  }, []);
 
   const selectChessFromBattle = useCallback(() => {
     setShowBattleGameSelect(false);
@@ -349,13 +403,17 @@ export default function useGameOverlays({ showToast, closeOtherScreensForGameSta
   const handleBluffMatchFound = useCallback(
     (data: any) => {
       setBluffLobby(null);
-      setShowBluffLobbyScreen(false);
-      setShowBluffModeSelect(false);
+      closeMenusForGameStart();
       applyBluffState(data);
-      closeOtherScreensForGameStart();
-      setShowBluffGamePage(true);
+      // Pehle "Match found" loading, phir table khulta hai (state tab tak ready).
+      setMatchFound('bluff');
+      clearMatchFoundTimer();
+      matchFoundTimerRef.current = setTimeout(() => {
+        setShowBluffGamePage(true);
+        setMatchFound(null);
+      }, 1300);
     },
-    [applyBluffState, closeOtherScreensForGameStart]
+    [applyBluffState, closeMenusForGameStart, clearMatchFoundTimer]
   );
 
   const handleBluffGameOver = useCallback((data: any) => {
@@ -378,6 +436,8 @@ export default function useGameOverlays({ showToast, closeOtherScreensForGameSta
   }, []);
 
   const closeBluffGame = useCallback(() => {
+    clearMatchFoundTimer();
+    setMatchFound(null);
     networkManager.send({ type: 'bluff_leave_table' });
     setShowBluffGamePage(false);
     setBluffMatch(null);
@@ -425,6 +485,7 @@ export default function useGameOverlays({ showToast, closeOtherScreensForGameSta
     matchEndData,
     openBattleGameSelect,
     closeBattleGameSelect,
+    closeGameMenus,
     selectChessFromBattle,
     closeChessFullScreen,
     selectRankedBattle,
@@ -455,7 +516,8 @@ export default function useGameOverlays({ showToast, closeOtherScreensForGameSta
     closeBluffGame,
 
     // combined
-    isGameActive: showBattleGameSelect || showChessFullScreen || battleActive || showBluffModeSelect || showBluffLobbyScreen || showBluffGamePage,
+    matchFound,
+    isGameActive: !!matchFound || showBattleGameSelect || showChessFullScreen || battleActive || showBluffModeSelect || showBluffLobbyScreen || showBluffGamePage,
     wsHandlers,
   };
 }

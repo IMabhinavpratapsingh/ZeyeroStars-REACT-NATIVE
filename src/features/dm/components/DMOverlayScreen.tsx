@@ -270,6 +270,7 @@ export default function DMOverlayScreen({ show, onClose, onOpenOverlay, myBalanc
             onUpdateTradeOffer={trade.updateTradeOffer}
             onConfirmTrade={trade.confirmActiveTrade}
             onCancelTrade={trade.cancelActiveTrade}
+            onOpenProfile={handleWorldProfile}
           />
         </ChatSlide>
       )}

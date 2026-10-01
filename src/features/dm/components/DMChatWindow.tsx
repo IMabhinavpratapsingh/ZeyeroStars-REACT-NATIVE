@@ -132,11 +132,12 @@ interface DMMessageBubbleProps {
   onTip: () => void;
   onReply: () => void;
   onReport: () => void;
+  onOpenProfile?: () => void;
   onOpenCommunity?: (slug: string, name: string) => void;
 }
 
 const DMMessageBubble = memo(
-  ({ msg, mine, dateLabel, showAvatar, avatarUri, avatarLetter, onDelete, onEdit, onTip, onReply, onReport, onOpenCommunity }: DMMessageBubbleProps) => {
+  ({ msg, mine, dateLabel, showAvatar, avatarUri, avatarLetter, onDelete, onEdit, onTip, onReply, onReport, onOpenProfile, onOpenCommunity }: DMMessageBubbleProps) => {
     const bubbleTime = formatBubbleTime(msg.created_at);
     const [editing, setEditing] = useState(false);
     const [editText, setEditText] = useState(msg.content);
@@ -187,13 +188,13 @@ const DMMessageBubble = memo(
           {!mine && (
             <View style={styles.sideAvatarSlot}>
               {showAvatar && (
-                <View style={styles.sideAvatar}>
+                <Pressable onPress={onOpenProfile} hitSlop={6} style={styles.sideAvatar}>
                   {avatarUri ? (
                     <Image source={{ uri: avatarUri }} style={styles.fill} />
                   ) : (
                     <Text style={styles.sideAvatarText}>{avatarLetter || '?'}</Text>
                   )}
-                </View>
+                </Pressable>
               )}
             </View>
           )}
@@ -288,7 +289,7 @@ interface DMChatWindowProps {
   getMyId: () => string | number | null;
   onDeleteMessage: (id: string | number) => void;
   onEditMessage: (id: string | number, content: string) => void;
-  onOpenProfile?: (dm: any) => void;
+  onOpenProfile?: (user: { id: string | number; username?: string }) => void;
   onTip: (target: { id: string | number; username?: string }, extra: any) => void;
   onOpenCommunity?: (slug: string, name: string) => void;
   activeTrade?: any;
@@ -352,6 +353,13 @@ const DMChatWindow = ({
   const dmTypingSentRef = useRef(false);
 
   const dmTargetId = selectedDM?.id || selectedDM?.target_id;
+
+  // Header (pfp + naam) aur bubble ke bagal wala pfp - dono isi se us user ki
+  // profile kholte hain (profileOpenBus -> ProfileViewModal).
+  const openPartnerProfile = useCallback(() => {
+    if (!dmTargetId) return;
+    onOpenProfile?.({ id: dmTargetId, username: selectedDM?.username });
+  }, [dmTargetId, selectedDM?.username, onOpenProfile]);
   // Inbox wale avatar_url/avatar_version se SYNC resolve (cache) - header me pehle
   // letter/default dikh ke baad me image nahi badlegi.
   const headerAvatarSrc = useAvatarImage(dmTargetId, selectedDM?.avatar_url, selectedDM?.avatar_version);
@@ -580,6 +588,7 @@ const DMChatWindow = ({
         onTip={() => onTip({ id: msg.sender_id, username: selectedDM.username }, null)}
         onReply={() => handleReply(username)}
         onReport={() => setReportState({ mode: 'report_message', target: { id: msg.id, label: 'this message' } })}
+        onOpenProfile={openPartnerProfile}
         onOpenCommunity={onOpenCommunity}
       />
     );
@@ -596,7 +605,7 @@ const DMChatWindow = ({
             <Ionicons name="arrow-back" size={26} color="#ffffff" />
           </Pressable>
 
-          <Pressable onPress={() => onOpenProfile?.(selectedDM)} style={styles.headerUser}>
+          <Pressable onPress={openPartnerProfile} style={styles.headerUser}>
             <View style={styles.headerAvatarWrap}>
               <View style={styles.headerAvatar}>
                 {headerAvatar ? (

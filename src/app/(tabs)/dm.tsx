@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { getMyId } from '../../shared/utils/auth';
 import { showAlert } from '../../shared/utils/alertBus';
+import { requestOpenProfile } from '../../shared/utils/profileOpenBus';
 import useUserCache from '../../shared/hooks/useUserCache';
 import useNotification from '../../shared/hooks/useNotification';
 import useWebSocket from '../../shared/hooks/useWebSocket';
@@ -108,6 +109,7 @@ export default function DMScreen() {
           onDeleteMessage={dm.deleteDMMessage}
           onEditMessage={dm.editDMMessage}
           onTip={() => showAlert('Tipping in chat is coming soon.', 'info')}
+          onOpenProfile={(u) => requestOpenProfile(u)}
         />
       )}
     </View>

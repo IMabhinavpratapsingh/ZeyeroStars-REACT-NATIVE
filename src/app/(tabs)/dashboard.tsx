@@ -199,6 +199,7 @@ export default function DashboardScreen() {
   return (
     <View style={styles.screen}>
       <FeedList
+        adEvery={4}
         listRef={feedListRef}
         listHeader={
           <RoomsStrip

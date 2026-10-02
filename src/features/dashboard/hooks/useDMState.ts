@@ -4,6 +4,7 @@ import { API_BASE } from '../../../shared/config/config';
 import networkManager, { getToken } from '../../../shared/services/NetworkManager';
 import { getMyId } from '../../../shared/utils/auth';
 import { showAlert } from '../../../shared/utils/alertBus';
+import { playMessageSent } from '../../../shared/services/soundService';
 import { confirmAction } from '../../../shared/utils/confirmBus';
 import {
   getCachedMessages,
@@ -743,6 +744,8 @@ export default function useDMState({
 
   const handleDMAck = useCallback(
     (data: any) => {
+      // Sound sirf tab jab DM chat khuli ho (inbox list mein ho to nahi).
+      if (selectedDM) playMessageSent();
       setChatMessages((prev) => {
         const idx = [...prev].reverse().findIndex((m) => !m.id && m.content === data.content);
         if (idx === -1) return prev;

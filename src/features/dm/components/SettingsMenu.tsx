@@ -19,7 +19,7 @@ import { TERMS_OF_SERVICE_SECTIONS, TERMS_LAST_UPDATED } from '../../legal/conte
 
 // Change Username FREE hai (backend mein bhi 0) - yahan sirf display ke liye.
 const USERNAME_CHANGE_COST = 0;
-const CONTACT_EMAIL = 'zeyerostarshelp@gmail.com';
+const CONTACT_EMAIL = 'zeyerotech@gmail.com';
 
 /**
  * Full-screen Settings (Quick Access drawer + apni Profile dono se khulta hai).

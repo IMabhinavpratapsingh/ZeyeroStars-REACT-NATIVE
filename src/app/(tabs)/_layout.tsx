@@ -40,7 +40,7 @@ import { setMyAvatarUrl } from '../../shared/utils/myAvatarBus';
 import useMyAvatarUrl from '../../shared/hooks/useMyAvatarUrl';
 import { getCommunityBySlug } from '../../features/communities/services/communitiesApi';
 import { showAlert } from '../../shared/utils/alertBus';
-import { subscribeOpenOverlay, requestOpenDM, subscribeOpenRoom } from '../../shared/utils/navOverlayBus';
+import { subscribeOpenOverlay, requestOpenDMChat, subscribeOpenRoom } from '../../shared/utils/navOverlayBus';
 import { subscribeOpenQuickActions } from '../../shared/utils/quickActionsBus';
 import { requestFeedScrollTopReload } from '../../shared/utils/feedScrollBus';
 import { subscribeOpenCommunity, requestOpenCommunityBySlug, requestOpenCommunityById } from '../../shared/utils/communityOpenBus';
@@ -717,9 +717,14 @@ export default function TabsLayout() {
           profile={viewingProfile}
           isMe={String(viewingProfile.id) === String(getMyId())}
           onClose={() => setViewingProfile(null)}
-          onMessageClick={() => {
+          onMessageClick={(p: any) => {
+            const target = { ...viewingProfile, ...(p || {}) };
             setViewingProfile(null);
-            requestOpenDM();
+            requestOpenDMChat({ ...target, id: target.id ?? target.target_id });
+          }}
+          onOpenChatWithDraft={(u, draft) => {
+            setViewingProfile(null);
+            requestOpenDMChat(u, draft);
           }}
           onOpenCommunity={(slug, name) => {
             setViewingProfile(null);

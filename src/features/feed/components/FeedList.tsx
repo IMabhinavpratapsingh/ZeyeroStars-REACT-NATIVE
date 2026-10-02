@@ -1,4 +1,4 @@
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useMemo } from 'react';
 import type { ReactNode, Ref } from 'react';
 import {
   ActivityIndicator,
@@ -6,6 +6,7 @@ import {
   Image,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -13,6 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import useAvatarImage from '../../avatar/hooks/useAvatarImage';
 import PostImage from './PostImage';
+import NativeAdCard from './NativeAdCard';
 import OnlineStatusDot from '../../../shared/components/OnlineStatusDot';
 import RankBadge from '../../../shared/components/RankBadge';
 import VerifiedBadge from '../../../shared/components/VerifiedBadge';
@@ -30,6 +32,23 @@ import type { FeedPost } from '../../dashboard/hooks/useFeedState';
 // (truncate + "Show more"), aur post image. Click-through navigation
 // (profile/room/community screens abhi RN mein exist nahi karte) optional
 // callback props se hai - jab wo screens bane, feed.tsx mein wire kar dena.
+
+// Native ad slot: har `adEvery` posts ke BAAD ek ad item list mein jaata hai
+// (posts[3] ke baad, posts[7] ke baad, ...). Key slot-number se bante hain,
+// isliye pagination/refresh par ad ki position stable rehti hai.
+type AdItem = { __ad: true; key: string };
+type FeedItem = FeedPost | AdItem;
+const isAdItem = (item: FeedItem): item is AdItem => (item as AdItem).__ad === true;
+
+function withAds(posts: FeedPost[], every: number): FeedItem[] {
+  if (!every || every < 1) return posts;
+  const out: FeedItem[] = [];
+  posts.forEach((post, i) => {
+    out.push(post);
+    if ((i + 1) % every === 0) out.push({ __ad: true, key: `native-ad-${(i + 1) / every}` });
+  });
+  return out;
+}
 
 const POST_AVATAR_SIZE = 44;
 // Community ab post card mein PRIMARY identity hai (bada avatar+naam,
@@ -301,6 +320,9 @@ interface FeedListProps extends PostCardCallbacks {
   // paddingHorizontal (16) ko cancel karke edge-to-edge lagta hai, kyunki
   // strip ka apna 16px padding hai. Loading/empty state mein bhi dikhta hai.
   listHeader?: ReactNode;
+  // Har itne posts ke baad ek native ad (0/undefined = ads band). Sirf main
+  // feed (Home/Feed tab) pass karta hai - community feed / hashtag search mein ads nahi.
+  adEvery?: number;
 }
 
 export default function FeedList({
@@ -320,21 +342,27 @@ export default function FeedList({
   showCommunityChip = true,
   listRef,
   listHeader,
+  adEvery = 0,
 }: FeedListProps) {
+  const data = useMemo(() => withAds(posts, adEvery), [posts, adEvery]);
+
   const renderItem = useCallback(
-    ({ item }: { item: FeedPost }) => (
-      <PostCard
-        post={item}
-        onToggleLike={onToggleLike}
-        onOpenPost={onOpenPost}
-        onOpenProfile={onOpenProfile}
-        onOpenUserRoom={onOpenUserRoom}
-        onOpenHashtag={onOpenHashtag}
-        onOpenCommunity={onOpenCommunity}
-        onOpenCommunityBySlug={onOpenCommunityBySlug}
-        showCommunityChip={showCommunityChip}
-      />
-    ),
+    ({ item }: { item: FeedItem }) =>
+      isAdItem(item) ? (
+        <NativeAdCard />
+      ) : (
+        <PostCard
+          post={item}
+          onToggleLike={onToggleLike}
+          onOpenPost={onOpenPost}
+          onOpenProfile={onOpenProfile}
+          onOpenUserRoom={onOpenUserRoom}
+          onOpenHashtag={onOpenHashtag}
+          onOpenCommunity={onOpenCommunity}
+          onOpenCommunityBySlug={onOpenCommunityBySlug}
+          showCommunityChip={showCommunityChip}
+        />
+      ),
     [
       onToggleLike,
       onOpenPost,
@@ -361,21 +389,30 @@ export default function FeedList({
   }
 
   if (!loading && posts.length === 0) {
+    // ScrollView + RefreshControl: khaali feed par bhi pull-to-refresh chale
+    // (pehle plain View tha - isliye refresh hota hi nahi tha).
     return (
-      <View style={styles.fill}>
+      <ScrollView
+        style={styles.fill}
+        contentContainerStyle={styles.emptyScroll}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#ffffff" />
+        }
+      >
         {headerNode}
         <View style={styles.centerFill}>
-          <Text style={styles.emptyText}>No posts yet - be the first to post!</Text>
+          <Text style={styles.emptyText}>No posts yet - pull down to refresh</Text>
         </View>
-      </View>
+      </ScrollView>
     );
   }
 
   return (
     <FlatList
-      ref={listRef}
-      data={posts}
-      keyExtractor={(item) => String(item.id)}
+      // listRef parent se FlatList<FeedPost> aata hai; data ab FeedPost + ad items hai.
+      ref={listRef as unknown as Ref<FlatList<FeedItem>>}
+      data={data}
+      keyExtractor={(item) => (isAdItem(item) ? item.key : String(item.id))}
       renderItem={renderItem}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#ffffff" />
@@ -396,6 +433,7 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   headerBleed: { marginHorizontal: -16 },
   centerFill: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  emptyScroll: { flexGrow: 1 },
   emptyText: { color: '#71717a', fontSize: 13 },
   card: { paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#27272a' },
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },

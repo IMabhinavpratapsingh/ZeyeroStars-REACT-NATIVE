@@ -6,6 +6,7 @@ import {
   uploadPostImage,
 } from '../../feed/services/feedApi';
 import { compressImage, toUploadFormPart } from '../../../shared/utils/imageCompress';
+import { getToken } from '../../../shared/services/NetworkManager';
 
 const FEED_PAGE_SIZE = 10;
 
@@ -45,9 +46,21 @@ let cache = {
   hasMore: true,
   offset: 0,
   loadedOnce: false,
+  // Kis token (user session) ka cache hai. Login / signup / logout par token
+  // badalta hai - tab purana (khaali ya doosre user ka) cache nahi chalna
+  // chahiye, warna feed "No posts" par atka rehta tha.
+  token: null as string | null,
 };
 
+function resetCacheIfSessionChanged() {
+  const t = getToken();
+  if (cache.token !== t) {
+    cache = { posts: [], hasMore: true, offset: 0, loadedOnce: false, token: t };
+  }
+}
+
 export default function useFeedState() {
+  resetCacheIfSessionChanged();
   const [posts, setPostsState] = useState<FeedPost[]>(cache.posts);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -74,7 +87,9 @@ export default function useFeedState() {
   // har baar (tab switch se remount) yeh sirf no-op hai, cache se hydrate
   // ho hi chuka hai (initial useState upar).
   const fetchFeed = useCallback(async () => {
-    if (cache.loadedOnce) return;
+    resetCacheIfSessionChanged();
+    // Cache tabhi use karo jab usme posts hon - khaali cache par dobara fetch.
+    if (cache.loadedOnce && cache.posts.length > 0) return;
     cache.loadedOnce = true;
     setLoading(true);
     try {
@@ -95,6 +110,7 @@ export default function useFeedState() {
   // Pull-to-refresh - hamesha fresh backend hit, offset 0 se, aur cache
   // ko bhi update karta hai.
   const refreshFeed = useCallback(async () => {
+    resetCacheIfSessionChanged();
     setRefreshing(true);
     try {
       const res = await getFeedPosts(0, FEED_PAGE_SIZE);

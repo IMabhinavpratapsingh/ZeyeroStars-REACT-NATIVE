@@ -101,6 +101,6 @@ You may stop using ZeyeroStars and request account deletion at any time by conta
   {
     heading: '15. Contact Us',
     body: `Questions about these Terms? Contact us at:
-zeyerostarshelp@gmail.com`,
+zeyerotech@gmail.com`,
   },
 ];

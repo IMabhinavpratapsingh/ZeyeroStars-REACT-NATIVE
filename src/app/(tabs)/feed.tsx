@@ -105,6 +105,7 @@ export default function FeedScreen() {
       />
 
       <FeedList
+        adEvery={4}
         posts={posts}
         loading={loading}
         loadingMore={loadingMore}

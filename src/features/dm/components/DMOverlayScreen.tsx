@@ -18,6 +18,7 @@ import DMChatWindow from './DMChatWindow';
 import WorldChatWindow from './WorldChatWindow';
 import { requestOpenProfile } from '../../../shared/utils/profileOpenBus';
 import networkManager from '../../../shared/services/NetworkManager';
+import { subscribeOpenDMChat } from '../../../shared/utils/navOverlayBus';
 
 // WEB -> RN: yeh pehle `app/(tabs)/dm.tsx` tha (ek Tabs.Screen route). Ab
 // `(tabs)/_layout.tsx` ke andar Community list/detail jaisa hi ek PERSISTENT
@@ -193,6 +194,20 @@ export default function DMOverlayScreen({ show, onClose, onOpenOverlay, myBalanc
     onOpenOverlay?.();
     handleSelectDM(u);
   };
+
+  // Profile ke "Send Message" se: overlay kholo + us user ki chat seedha open karo.
+  const onOpenOverlayRef = useRef(onOpenOverlay);
+  onOpenOverlayRef.current = onOpenOverlay;
+  useEffect(
+    () =>
+      subscribeOpenDMChat(({ user, draft }) => {
+        onOpenOverlayRef.current?.();
+        setShowWorld(false);
+        setShowInbox(false);
+        dmRef.current.openChat(user as any, null, draft || '');
+      }),
+    []
+  );
 
   const handleOpenWorldChat = useCallback(() => setShowWorld(true), []);
   const handleCloseWorldChat = useCallback(() => setShowWorld(false), []);

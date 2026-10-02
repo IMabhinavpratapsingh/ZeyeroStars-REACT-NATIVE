@@ -1,6 +1,7 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -43,6 +44,18 @@ import { TERMS_OF_SERVICE_SECTIONS, TERMS_LAST_UPDATED } from '../features/legal
 //   (AsyncStorage + in-memory cache) aur setMyId().
 // - window.location.href -> router.replace() (koi hard reload nahi).
 const Login = () => {
+  const scrollRef = useRef<ScrollView>(null);
+
+  // Keyboard khulte hi form ko neeche tak scroll karo, taaki Password field
+  // aur button keyboard ke upar dikhein (pehle keyboard unhe dhak leta tha).
+  useEffect(() => {
+    const evt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const sub = Keyboard.addListener(evt, () => {
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 60);
+    });
+    return () => sub.remove();
+  }, []);
+
   const [loading, setLoading] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [nudge, setNudge] = useState(false);
@@ -191,8 +204,15 @@ const Login = () => {
   };
 
   return (
-    <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+    // Android par bhi 'padding' - edge-to-edge mein system "resize" nahi karta,
+    // isliye pehle keyboard Password bar ko dhak leta tha.
+    <KeyboardAvoidingView style={styles.screen} behavior="padding">
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
         <View style={styles.brandWrap}>
           <Text style={styles.brand}>ZeyeroStars</Text>
           <Text style={styles.brandSub}>Sign in to keep playing</Text>
@@ -342,7 +362,7 @@ export default Login;
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#000000' },
-  scrollContent: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 40 },
+  scrollContent: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingTop: 40, paddingBottom: 80 },
   brandWrap: { alignItems: 'center', marginBottom: 32 },
   brand: { color: '#ffffff', fontSize: 24, fontWeight: '800' },
   brandSub: { color: '#a1a1aa', fontSize: 13, marginTop: 8 },

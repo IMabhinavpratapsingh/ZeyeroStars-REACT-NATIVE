@@ -22,12 +22,20 @@ import mobileAds, {
   TestIds,
 } from 'react-native-google-mobile-ads';
 
-const IS_TESTING = true; // production me false karna
+// __DEV__ = dev/debug build mein test ads (apne hi real ads pe click karna AdMob ban karwa sakta hai),
+// release build mein apne asli ad units. Zaroorat ho to yahan manually true/false kar sakte ho.
+const IS_TESTING = __DEV__;
 
 const AD_UNITS = {
-  interstitial: IS_TESTING ? TestIds.INTERSTITIAL : 'ca-app-pub-XXXXXXXX/YYYYYYYY',
-  rewarded: IS_TESTING ? TestIds.REWARDED : 'ca-app-pub-XXXXXXXX/YYYYYYYY',
+  interstitial: IS_TESTING ? TestIds.INTERSTITIAL : 'ca-app-pub-4364886892235302/9414380573',
+  rewarded: IS_TESTING ? TestIds.REWARDED : 'ca-app-pub-4364886892235302/2597605063',
+  // Feed ka native ad (NativeAdCard.tsx) - AdMob mein "Native advanced" ad unit banana.
+  native: IS_TESTING ? TestIds.NATIVE : 'ca-app-pub-4364886892235302/3806744950',
 };
+
+export function getNativeAdUnitId(): string {
+  return AD_UNITS.native;
+}
 
 // Preload ka event kabhi na aaye (network hang) to promise hamesha ke liye
 // atak na jaaye - 30s baad chhod do, agli preload dobara try kar sakti hai.
@@ -50,6 +58,15 @@ function ensureInitialized() {
       });
   }
   return initPromise;
+}
+
+/**
+ * NativeAdCard jaise components load se pehle isse await karte hain - SDK
+ * ek hi baar initialize hota hai (initPromise guard), initAds() ke saath
+ * race nahi hota.
+ */
+export function ensureAdsInitialized() {
+  return ensureInitialized();
 }
 
 export async function initAds(): Promise<void> {

@@ -78,7 +78,7 @@ export default function UsernameSelectionScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.screen}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior="padding"
     >
       <View style={styles.card}>
         <Text style={styles.brand}>ZeyeroStars</Text>

@@ -62,3 +62,24 @@ export function subscribeMyRoomChanged(listener: () => void): () => void {
 export function notifyMyRoomChanged(): void {
   myRoomListeners.forEach((l) => l());
 }
+
+// --- Profile ("Send Message") se seedha kisi user ki chat kholna ---
+// requestOpenDM() sirf Inbox kholta hai (koi user nahi jaata). Isliye alag
+// event: DMOverlayScreen (hamesha mounted) isse sun kar overlay kholta hai
+// aur us user ki chat seedha open karta hai.
+export interface OpenDMChatPayload {
+  user: { id: string | number; username?: string; [k: string]: any };
+  draft?: string;
+}
+let dmChatListeners: ((payload: OpenDMChatPayload) => void)[] = [];
+
+export function subscribeOpenDMChat(listener: (payload: OpenDMChatPayload) => void): () => void {
+  dmChatListeners.push(listener);
+  return () => {
+    dmChatListeners = dmChatListeners.filter((l) => l !== listener);
+  };
+}
+
+export function requestOpenDMChat(user: OpenDMChatPayload['user'], draft?: string): void {
+  dmChatListeners.forEach((l) => l({ user, draft }));
+}

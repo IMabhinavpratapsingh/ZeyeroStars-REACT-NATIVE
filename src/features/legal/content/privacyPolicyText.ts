@@ -11,7 +11,7 @@ export interface LegalSection {
   body: string;
 }
 
-export const PRIVACY_LAST_UPDATED = 'September 18, 2026';
+export const PRIVACY_LAST_UPDATED = 'October 1, 2026';
 
 export const PRIVACY_POLICY_SECTIONS: LegalSection[] = [
   {
@@ -22,7 +22,7 @@ export const PRIVACY_POLICY_SECTIONS: LegalSection[] = [
     heading: '2. Information We Collect',
     body: `We collect the following types of information:
 
-• Account Information: When you sign in with Google, we receive your name, email address, and a unique Google account identifier from Google. We do not receive or store your Google password.
+• Account Information: When you create an account, we collect your email address and the password you choose. Sign-in is handled through Firebase Authentication (a Google service). Your password is stored securely by Firebase - we never see or store it in readable form. We also receive a unique account identifier.
 
 • Profile Information: Your chosen username, avatar appearance, equipped items, verified/elite status, and any bio or profile details you add.
 
@@ -46,6 +46,8 @@ export const PRIVACY_POLICY_SECTIONS: LegalSection[] = [
 
 • Device & Usage Data: IP address, device type, operating system, app version, log/crash data, and approximate location (derived from IP) — collected automatically for security, fraud prevention, and to keep the Game running properly.
 
+• Advertising Data: ZeyeroStars shows ads, including optional rewarded video ads where you watch an ad to earn Z Money, using Google AdMob. AdMob may collect and use your device's advertising ID (Android Advertising ID), IP address, device and app information, and information about the ads you view or interact with, to deliver, measure, and personalize ads and to prevent ad fraud. We also record how many rewarded ads you have watched each day so we can apply daily limits and give you the reward.
+
 • Cookies & Local Storage: We use local storage on your device (e.g. to keep you logged in, and to remember choices like dismissing an in-app notice) rather than traditional browser cookies.`,
   },
   {
@@ -55,6 +57,7 @@ export const PRIVACY_POLICY_SECTIONS: LegalSection[] = [
 • Create and manage your account, and let you sign in
 • Provide core Game features - chat, Rooms, Communities, World Chat, mini-games, avatar customization, trading, shop, leaderboards
 • Deliver push notifications you've opted into
+• Show ads (including rewarded ads) and give you the reward for watching them, within the daily limits
 • Process purchases and grant you the virtual currency/items you bought
 • Automatically filter messages and posts for abusive language, and review reports filed by players
 • Keep the Game safe - detect cheating, fraud, abuse, and enforce our Terms of Service, including suspending or banning accounts that violate our community guidelines
@@ -66,7 +69,9 @@ export const PRIVACY_POLICY_SECTIONS: LegalSection[] = [
     heading: '4. How We Share Your Information',
     body: `We do not sell your personal information. We only share it with:
 
-• Service providers who help us run the Game - for example our database/hosting provider (Supabase), our file/image storage provider (Cloudflare R2, for profile pictures and other uploaded images), Google (for sign-in and push notifications via Firebase Cloud Messaging), and payment processors/app stores (for purchases). These providers only get the data needed to do their job.
+• Service providers who help us run the Game - for example our database/hosting provider (Supabase), our file/image storage provider (Cloudflare R2, for profile pictures and other uploaded images), Google (Firebase Authentication for sign-in, Firebase Cloud Messaging for push notifications, and Google AdMob for advertising), and payment processors/app stores (for purchases). These providers only get the data needed to do their job.
+
+• Advertising partners - Google AdMob receives device and ad-interaction data (such as your advertising ID and IP address) so it can show and measure ads. Google's use of this data is described in Google's Privacy Policy (https://policies.google.com/privacy). You can reset your advertising ID or opt out of ads personalization in your Android device settings (usually under Settings > Privacy > Ads; the exact path varies by device).
 
 • Other players - your username, avatar, online/presence status, and anything you post or send in public spaces (Feed, World Chat, Rooms, DMs) is visible to the players you interact with. Community mods/owners can also see activity and reports within their own community. Please don't share personal information with strangers in chat.
 
@@ -103,7 +108,8 @@ Reports and moderation actions are logged against your account and may be review
 • Change your username, avatar, and profile details anytime from the Game
 • Block other players, and control who can send you message requests
 • Turn push notifications on or off from your device settings
-• Request a copy of your data, or ask us to delete your account, by contacting us at the email below
+• Delete your account yourself from inside the Game: Settings > Delete Account
+• Request a copy of your data, or ask us to delete your account if you cannot access the Game, by contacting us at the email below
 • Note: deleting your account does not entitle you to a refund of any virtual currency or purchases - see our Terms of Service`,
   },
   {
@@ -117,6 +123,6 @@ Reports and moderation actions are logged against your account and may be review
   {
     heading: '12. Contact Us',
     body: `If you have questions about this Privacy Policy or your data, contact us at:
-zeyerostarshelp@gmail.com`,
+zeyerotech@gmail.com`,
   },
 ];

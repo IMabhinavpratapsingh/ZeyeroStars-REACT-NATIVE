@@ -252,10 +252,14 @@ export default function useDMState({
     setDmLoadingMore(true);
     try {
       const token = getToken();
-      const res = await axios.get(`${API_BASE}/ws/dm/history/${targetId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-        params: { before: oldestId, limit: DM_PAGE_SIZE },
-      });
+      // Min 450ms spinner - fast network par bhi loading dikhe (Instagram jaisa).
+      const [res] = await Promise.all([
+        axios.get(`${API_BASE}/ws/dm/history/${targetId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          params: { before: oldestId, limit: DM_PAGE_SIZE },
+        }),
+        new Promise((r) => setTimeout(r, 450)),
+      ]);
       const older = (res.data.messages || []).map(normalizeDMHistoryMessage);
       const newHasMore = !!res.data.has_more;
       setChatMessages((prev) => [...older, ...prev]);

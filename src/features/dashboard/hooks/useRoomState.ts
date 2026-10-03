@@ -21,7 +21,7 @@ import {
  * Rooms button / "You're in a room" banner se room screen khulegi).
  * true = join hote hi room screen seedha khul jaye.
  */
-const AUTO_JOIN_OPENS_ROOM_SCREEN = true;
+const AUTO_JOIN_OPENS_ROOM_SCREEN = false;
 
 export type RoomMessage = {
   sender_id?: string | number;
@@ -93,6 +93,9 @@ export default function useRoomState({
   // resume/reconnect) - aisi state mein screen ko zabardasti upar nahi
   // laana (dekho handleRoomJoined).
   const silentRoomResyncRef = useRef(false);
+  // Agla room_joined/room_error app-start AUTO-JOIN ka hai - fail (room full,
+  // banned, etc.) hone par popup/alert mat dikhao, chupchap feed par raho.
+  const autoJoinPendingRef = useRef(false);
 
   const [roomScreenVisible, setRoomScreenVisible] = useState(false);
   const [roomMessages, setRoomMessages] = useState<Record<string, RoomMessage[]>>({});
@@ -181,6 +184,7 @@ export default function useRoomState({
         networkManager.send({ type: 'room_leave', room_id: activeRoomRef.current!.id });
       }
 
+      autoJoinPendingRef.current = false;
       roomSwitchPendingRef.current = true;
       // Safety net - agar switch ke dauraan connection drop ho jaaye, koi
       // bhi jawab (room_joined/room_error) kabhi nahi aayega - 6s baad
@@ -237,7 +241,11 @@ export default function useRoomState({
     try {
       const res = await getMyRoom();
       const room = res.data?.room;
-      if (!room?.id) return; // room bana hi nahi hai
+      // Room bana hi nahi hai -> kuch nahi karna (na join, na alert, na loading).
+      if (!room?.id) {
+        setMyRoom(null);
+        return;
+      }
       setMyRoom(room);
 
       if (!networkManager.isConnected()) {
@@ -251,9 +259,11 @@ export default function useRoomState({
       if (activeRoomRef.current || roomSwitchPendingRef.current) return;
 
       silentRoomResyncRef.current = !AUTO_JOIN_OPENS_ROOM_SCREEN;
+      autoJoinPendingRef.current = true;
       roomSwitchPendingRef.current = true;
       setTimeout(() => {
         roomSwitchPendingRef.current = false;
+        autoJoinPendingRef.current = false;
       }, 6000);
       networkManager.send({
         type: 'room_join',
@@ -262,6 +272,11 @@ export default function useRoomState({
         y: ROOM_MAIN_GATE_POS.y,
       });
     } catch (err: any) {
+      // 404 = room hai hi nahi (backend 404 deta ho to) - normal case, error nahi.
+      if (err?.response?.status === 404) {
+        setMyRoom(null);
+        return;
+      }
       autoJoinDoneRef.current = false;
       console.error('Auto-join my room error:', err?.response?.data || err?.message);
     }
@@ -439,6 +454,15 @@ export default function useRoomState({
 
     const appSub = AppState.addEventListener('change', onAppState);
 
+    // Foreground keepalive: socket chupchap mar jaye (network switch) to readyState
+    // OPEN rehta hai aur room messages bina error ke gayab ho jaate hain. Room mein
+    // hote hue har 20s ping-check; zombie nikla to ensureAlive reconnect + rejoin chalata hai.
+    const keepAlive = setInterval(() => {
+      if (!activeRoomRef.current || AppState.currentState !== 'active') return;
+      if (networkManager.isConnecting()) return;
+      networkManager.ensureAlive();
+    }, 20000);
+
     // Socket dobara open hua (reconnect ke baad) aur hum kisi room mein the -
     // fresh room_join bhejo, warna naya socket room ki membership ke bina hota hai.
     const unsubState = networkManager.addStateListener((open) => {
@@ -451,6 +475,7 @@ export default function useRoomState({
     });
 
     return () => {
+      clearInterval(keepAlive);
       appSub.remove();
       unsubState();
     };
@@ -464,6 +489,7 @@ export default function useRoomState({
   const handleRoomJoined = useCallback(
     (data: any) => {
       roomSwitchPendingRef.current = false;
+      autoJoinPendingRef.current = false;
       setActiveRoomBoth(data.room);
 
       if (silentRoomResyncRef.current) {
@@ -472,7 +498,12 @@ export default function useRoomState({
         setRoomScreenVisible(true);
       }
       setRoomTypingUsers([]);
-      setRoomPositionsBoth(data.positions || {});
+      // Rejoin/resync mein server positions mein meri entry na ho to meri akhri
+      // position rakho - warna avatar gate par teleport ho jata hai.
+      const myKey = String(getMyId());
+      const myLast = roomPositionsRef.current[myKey];
+      const incoming = data.positions || {};
+      setRoomPositionsBoth(myLast && !incoming[myKey] ? { ...incoming, [myKey]: myLast } : incoming);
       if (data.grid) setRoomGrid(data.grid);
 
       // Double rAF - room floor render/paint ho chuki ho, tabhi overlay
@@ -616,6 +647,12 @@ export default function useRoomState({
       roomSwitchPendingRef.current = false;
       silentRoomResyncRef.current = false;
       endScreenLoading();
+      if (autoJoinPendingRef.current) {
+        // Auto-join fail (room full / ban / etc.) - user ko pata bhi nahi chalna chahiye.
+        autoJoinPendingRef.current = false;
+        console.log('Auto-join skipped:', data?.message);
+        return;
+      }
       showAlert(data.message || 'Something went wrong in the room.');
     },
     [endScreenLoading]

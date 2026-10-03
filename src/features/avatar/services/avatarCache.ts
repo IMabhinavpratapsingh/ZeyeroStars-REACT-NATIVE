@@ -35,6 +35,18 @@ interface AvatarEntry {
 // In-memory L1 - sync source of truth (key hamesha String(userId))
 const memCache = new Map<string, AvatarEntry>();
 
+// Jin users ka avatar_url null/none aaya - unki storage entry hat chuki hai;
+// hydrate (boot) late aaye to bhi purani entry wapas memCache mein na ghuse.
+const clearedIds = new Set<string>();
+
+// Backend kabhi null ki jagah string "None"/"null"/"undefined" bhej deta hai - sab "no avatar".
+function isEmptyAvatarUrl(v: unknown): boolean {
+  if (v === null || v === '') return true;
+  if (typeof v !== 'string') return false;
+  const t = v.trim().toLowerCase();
+  return t === '' || t === 'none' || t === 'null' || t === 'undefined';
+}
+
 function safeParse(raw: string | null): AvatarEntry | null {
   if (!raw) return null;
   try {
@@ -53,7 +65,7 @@ export async function hydrateAvatarCache(): Promise<void> {
     await Promise.all(
       keys.map(async (key) => {
         const userId = key.slice(STORAGE_PREFIX.length);
-        if (memCache.has(userId)) return; // is session ki fresh entry purani storage copy se behtar hai
+        if (memCache.has(userId) || clearedIds.has(userId)) return; // is session ki fresh entry purani storage copy se behtar hai
         const entry = safeParse(await AsyncStorage.getItem(key));
         if (entry && !memCache.has(userId)) memCache.set(userId, entry);
       })
@@ -82,11 +94,14 @@ export function resolveAvatarUrl(
   // di, ya kabhi thi hi nahi) - to purani cached entry (memory + storage)
   // turant hata do, warna stale pfp kahin bhi wapas dikh sakti hai.
   // (undefined = field aaya hi nahi, usme cache ko haath nahi lagate.)
-  if (avatarUrl === null || avatarUrl === '') {
-    if (memCache.has(id)) invalidateAvatar(id);
+  if (isEmptyAvatarUrl(avatarUrl)) {
+    // Memory + AsyncStorage dono se hatao (ek hi baar), image mat dikhao.
+    if (memCache.has(id) || !clearedIds.has(id)) invalidateAvatar(id);
     return null;
   }
+  if (avatarUrl === undefined) return memCache.get(id)?.url ?? null;
   if (!avatarUrl) return null;
+  clearedIds.delete(id);
   const normVersion = version ?? 0;
 
   const mem = memCache.get(id);
@@ -106,6 +121,7 @@ export function resolveAvatarUrl(
 // kar deta hai; future edge-case ke liye rakha hai).
 export function invalidateAvatar(userId: string | number): void {
   const id = String(userId);
+  clearedIds.add(id);
   memCache.delete(id);
   AsyncStorage.removeItem(STORAGE_PREFIX + id).catch(() => {});
 }

@@ -1,5 +1,6 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
   Image,
   Keyboard,
@@ -769,17 +770,19 @@ const DMChatWindow = ({
             initialNumToRender={10}
             maxToRenderPerBatch={8}
             windowSize={7}
-            onEndReachedThreshold={0.3}
+            onEndReachedThreshold={0.5}
             keyboardShouldPersistTaps="handled"
             bounces={false}
             overScrollMode="never"
             contentContainerStyle={styles.listContent}
             style={styles.flex}
+            // Inverted list: footer = sabse UPAR. Jab tak purane messages baaki hain
+            // (ya load ho rahe hain) Instagram jaisa spinner upar dikhta rehta hai.
             ListFooterComponent={
-              loadingMore ? (
+              hasMoreMessages || loadingMore ? (
                 <View style={styles.loadMoreWrap}>
-                  <View style={styles.loadMorePill}>
-                    <TypingDots color="#a3a3a3" />
+                  <View style={styles.loadMoreSpinner}>
+                    <ActivityIndicator size="small" color="#d4d4d4" />
                   </View>
                 </View>
               ) : null
@@ -1007,8 +1010,8 @@ const styles = StyleSheet.create({
   skelWrap: { flex: 1, padding: 16, gap: 12 },
   skelRow: { flexDirection: 'row' },
   skelBubble: { height: 40, backgroundColor: '#262626', borderRadius: 16 },
-  loadMoreWrap: { alignItems: 'center', paddingBottom: 8 },
-  loadMorePill: { backgroundColor: '#161616', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
+  loadMoreWrap: { alignItems: 'center', paddingVertical: 10 },
+  loadMoreSpinner: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#161616', alignItems: 'center', justifyContent: 'center' },
   dotsRow: { flexDirection: 'row', alignItems: 'center', gap: 4, height: 10 },
   dot: { width: 6, height: 6, borderRadius: 3 },
   typingRow: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 2, flexDirection: 'row', alignItems: 'center', gap: 8 },

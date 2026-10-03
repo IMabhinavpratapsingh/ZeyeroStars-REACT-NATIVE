@@ -241,7 +241,10 @@ export default function DMOverlayScreen({ show, onClose, onOpenOverlay, myBalanc
   }, []);
   const handleDeleteConversation = useCallback((id: any) => dmRef.current.deleteConversation(id), []);
   const handleLoadMore = useCallback(() => dmRef.current.loadMoreDMHistory(), []);
-  const handleSend = useCallback((text: string) => dmRef.current.sendMessage(text), []);
+  const handleSend = useCallback(
+    (text: string, replyingTo?: string | number | null) => dmRef.current.sendMessage(text, replyingTo),
+    []
+  );
   const handleDeleteMsg = useCallback((id: any) => dmRef.current.deleteDMMessage(id), []);
   const handleEditMsg = useCallback((id: any, c: string) => dmRef.current.editDMMessage(id, c), []);
   const handleTip = useCallback(() => showAlert('Tipping in chat is coming soon.', 'info'), []);

@@ -135,10 +135,12 @@ interface DMMessageBubbleProps {
   onReport: () => void;
   onOpenProfile?: () => void;
   onOpenCommunity?: (slug: string, name: string) => void;
+  /** Agar yeh message kisi ka reply hai: quoted block (message ke upar) ka data. */
+  replyInfo?: { name: string; text: string; missing: boolean } | null;
 }
 
 const DMMessageBubble = memo(
-  ({ msg, mine, dateLabel, showAvatar, avatarUri, avatarLetter, onDelete, onEdit, onTip, onReply, onReport, onOpenProfile, onOpenCommunity }: DMMessageBubbleProps) => {
+  ({ msg, mine, dateLabel, showAvatar, avatarUri, avatarLetter, onDelete, onEdit, onTip, onReply, onReport, onOpenProfile, onOpenCommunity, replyInfo }: DMMessageBubbleProps) => {
     const bubbleTime = formatBubbleTime(msg.created_at);
     const [editing, setEditing] = useState(false);
     const [editText, setEditText] = useState(msg.content);
@@ -229,6 +231,21 @@ const DMMessageBubble = memo(
                     {...pressableProps}
                     style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs]}
                   >
+                    {/* Reply: jis message ka jawab hai woh bubble ke UPAR (Telegram/Instagram jaisa) */}
+                    {!!replyInfo && (
+                      <View style={[styles.quote, mine ? styles.quoteMine : styles.quoteTheirs]}>
+                        <Text style={[styles.quoteName, mine && styles.quoteNameMine]} numberOfLines={1}>
+                          {replyInfo.name}
+                        </Text>
+                        <Text
+                          style={[styles.quoteText, mine && styles.quoteTextMine, replyInfo.missing && styles.quoteMissing]}
+                          numberOfLines={2}
+                        >
+                          {replyInfo.text}
+                        </Text>
+                      </View>
+                    )}
+
                     <Text style={[styles.bubbleText, mine && styles.bubbleTextMine]}>
                       {renderWithMentions(msg.content, null, onOpenCommunity)}
                     </Text>
@@ -284,7 +301,7 @@ interface DMChatWindowProps {
   hasMoreMessages?: boolean;
   loadingMore?: boolean;
   onLoadMore?: () => void;
-  onSend: (text: string) => void;
+  onSend: (text: string, replyingTo?: string | number | null) => void;
   isOtherTyping?: boolean;
   onClose: () => void;
   getMyId: () => string | number | null;
@@ -350,6 +367,8 @@ const DMChatWindow = ({
 
   // Input + typing state LOCAL hai - keystroke par Dashboard re-render nahi hota.
   const [msgInput, setMsgInput] = useState('');
+  // Jis message ka reply likh rahe hain (input ke upar preview bar mein dikhta hai).
+  const [replyTarget, setReplyTarget] = useState<{ id: string | number; name: string; content: string } | null>(null);
   const dmTypingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dmTypingSentRef = useRef(false);
 
@@ -417,6 +436,7 @@ const DMChatWindow = ({
   // Conversation badalne par input reset (ya User Store se aaya draft dikhao).
   useEffect(() => {
     setMsgInput(initialDraft || '');
+    setReplyTarget(null);
     selectionRef.current = null;
     setEmojiOpen(false);
     userScrolledRef.current = false;
@@ -461,8 +481,9 @@ const DMChatWindow = ({
       dmTypingSentRef.current = false;
       networkManager.send({ type: 'typing', target_id: dmTargetId, is_typing: false });
     }
-    onSend(msgInput);
+    onSend(msgInput, replyTarget?.id ?? null);
     setMsgInput('');
+    setReplyTarget(null);
     selectionRef.current = null;
   };
 
@@ -510,9 +531,22 @@ const DMChatWindow = ({
 
   const comingSoon = (what: string) => showActionToast(`${what} is coming soon.`);
 
-  const handleReply = useCallback((username?: string) => {
-    setMsgInput((prev) => `${prev}@${username} `);
+  // Reply: message ki id (replying_to) bhejte hain - input mein @naam nahi jodte.
+  // Abhi tak server ack nahi aaya (id nahi) to reply nahi ho sakta.
+  const handleReply = useCallback((msg: any, name: string) => {
+    if (!msg?.id) return;
+    setReplyTarget({ id: msg.id, name, content: msg.content });
+    inputRef.current?.focus();
   }, []);
+
+  // id -> message, taaki reply ka quoted block loaded messages se seedha mil jaye.
+  const msgById = useMemo(() => {
+    const map = new Map<string, any>();
+    chatMessages.forEach((m) => {
+      if (m?.id) map.set(String(m.id), m);
+    });
+    return map;
+  }, [chatMessages]);
 
   // INVERTED list: newest message index 0 pe hota hai, aur list hamesha
   // bottom (latest) se hi shuru hoti hai - koi scrollToEnd/timing hack nahi.
@@ -576,6 +610,20 @@ const DMChatWindow = ({
     const dateLabel = showDate ? formatDayLabel(msg.created_at) : null;
     const showAvatar = !mine && (!newer || newer.isTip || String(newer.sender_id) !== String(msg.sender_id));
 
+    // Reply hai to original message dhundo. Na mile (bahut purana, abhi load
+    // nahi hua, ya delete ho gaya) to "Original message" dikhao.
+    let replyInfo: { name: string; text: string; missing: boolean } | null = null;
+    if (msg.replying_to) {
+      const original = msgById.get(String(msg.replying_to));
+      replyInfo = original
+        ? {
+            name: String(original.sender_id) === String(getMyId()) ? 'You' : selectedDM.username || 'User',
+            text: original.content,
+            missing: false,
+          }
+        : { name: 'Reply', text: 'Original message', missing: true };
+    }
+
     return (
       <DMMessageBubble
         msg={msg}
@@ -587,7 +635,8 @@ const DMChatWindow = ({
         onDelete={() => onDeleteMessage(msg.id)}
         onEdit={(newContent) => onEditMessage(msg.id, newContent)}
         onTip={() => onTip({ id: msg.sender_id, username: selectedDM.username }, null)}
-        onReply={() => handleReply(username)}
+        onReply={() => handleReply(msg, username)}
+        replyInfo={replyInfo}
         onReport={() => setReportState({ mode: 'report_message', target: { id: msg.id, label: 'this message' } })}
         onOpenProfile={openPartnerProfile}
         onOpenCommunity={onOpenCommunity}
@@ -752,6 +801,24 @@ const DMChatWindow = ({
             <Text style={styles.reminder}>
               You declined their request — sending a message will start a new request from you.
             </Text>
+          </View>
+        )}
+
+        {/* Reply preview bar - input ke upar, X se cancel */}
+        {!!replyTarget && requestLock !== 'pending_incoming' && requestLock !== 'pending_sent' && requestLock !== 'denied' && (
+          <View style={styles.replyBar}>
+            <View style={styles.replyBarAccent} />
+            <View style={styles.flex}>
+              <Text style={styles.replyBarName} numberOfLines={1}>
+                Replying to {replyTarget.name}
+              </Text>
+              <Text style={styles.replyBarText} numberOfLines={1}>
+                {replyTarget.content}
+              </Text>
+            </View>
+            <Pressable onPress={() => setReplyTarget(null)} hitSlop={10} accessibilityLabel="Cancel reply">
+              <Ionicons name="close" size={20} color="#a3a3a3" />
+            </Pressable>
           </View>
         )}
 
@@ -969,6 +1036,28 @@ const styles = StyleSheet.create({
   bubbleTheirs: { backgroundColor: '#262626', borderBottomLeftRadius: 2 },
   bubbleText: { color: '#ffffff', fontSize: 14, lineHeight: 19, flexShrink: 1 },
   bubbleTextMine: { color: '#000000' },
+  quote: { borderLeftWidth: 3, borderRadius: 8, paddingVertical: 4, paddingHorizontal: 8, marginBottom: 6 },
+  quoteMine: { backgroundColor: 'rgba(0,0,0,0.08)', borderLeftColor: '#4f46e5' },
+  quoteTheirs: { backgroundColor: 'rgba(255,255,255,0.08)', borderLeftColor: '#818cf8' },
+  quoteName: { color: '#a5b4fc', fontSize: 12, fontWeight: '700' },
+  quoteNameMine: { color: '#4f46e5' },
+  quoteText: { color: 'rgba(255,255,255,0.75)', fontSize: 13, lineHeight: 17 },
+  quoteTextMine: { color: 'rgba(0,0,0,0.7)' },
+  quoteMissing: { fontStyle: 'italic', opacity: 0.7 },
+  replyBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginHorizontal: 12,
+    marginTop: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    backgroundColor: '#161616',
+    borderRadius: 12,
+  },
+  replyBarAccent: { width: 3, alignSelf: 'stretch', borderRadius: 2, backgroundColor: '#818cf8' },
+  replyBarName: { color: '#a5b4fc', fontSize: 12, fontWeight: '700' },
+  replyBarText: { color: '#a3a3a3', fontSize: 13 },
   editedTextMine: { color: 'rgba(0,0,0,0.55)' },
   editedText: { fontSize: 10, color: 'rgba(255,255,255,0.6)', fontStyle: 'italic', marginTop: 2 },
   statusIcon: { position: 'absolute', bottom: 4, right: 10, flexDirection: 'row', alignItems: 'center' },

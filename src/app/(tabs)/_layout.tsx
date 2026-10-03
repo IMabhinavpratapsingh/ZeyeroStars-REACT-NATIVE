@@ -323,6 +323,18 @@ export default function TabsLayout() {
   // RoomsStrip se kisi room par tap -> Rooms overlay khol do (join RoomsOverlayScreen khud karega).
   useEffect(() => subscribeOpenRoom(() => openRooms()), [openRooms]);
 
+  // App start hote hi sabse pehle Rooms overlay khol do (ek baar). Room bana
+  // hua hai to RoomsOverlayScreen ka auto-join user ko seedha apne room
+  // screen par le aata hai; room nahi hai to Rooms list dikhti hai. Ref
+  // guard isliye hai ki openRooms ki identity badalne par dobara na khule
+  // (user ne back dabake overlay band kiya ho to wapas zabardasti na aaye).
+  const startupRoomsOpenedRef = useRef(false);
+  useEffect(() => {
+    if (startupRoomsOpenedRef.current) return;
+    startupRoomsOpenedRef.current = true;
+    openRooms();
+  }, [openRooms]);
+
   // PostDetailModal jaisa true-fullscreen overlay khula ho to Header aur
   // BottomNav dono hide - post pura screen le, neeche sirf apna comment
   // input rahe.

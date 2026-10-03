@@ -15,6 +15,14 @@ import {
   ROOM_MAIN_GATE_POS,
 } from '../../rooms/services/roomFloorBus';
 
+/**
+ * App khulte hi apne room mein auto-join (autoJoinMyRoom) - join ke baad
+ * Room SCREEN bhi apne aap khule? false = chupchap join (feed par hi raho,
+ * Rooms button / "You're in a room" banner se room screen khulegi).
+ * true = join hote hi room screen seedha khul jaye.
+ */
+const AUTO_JOIN_OPENS_ROOM_SCREEN = true;
+
 export type RoomMessage = {
   sender_id?: string | number;
   username?: string;
@@ -209,6 +217,55 @@ export default function useRoomState({
     },
     [beginScreenLoading, endScreenLoading, isPrivileged]
   );
+
+  // App session mein sirf EK baar - user khud "Exit Room" dabaye to wapas
+  // zabardasti join nahi karte.
+  const autoJoinDoneRef = useRef(false);
+
+  /**
+   * App join (open) karte hi user ke APNE room (agar bana rakha hai) mein
+   * chupchap join. openRoom() se alag hai: rules-warning popup, room
+   * interstitial ad aur "Entering room..." loading overlay nahi dikhte
+   * (app start par yeh sab khalal daalte), aur default mein room screen bhi
+   * force-open nahi hoti (AUTO_JOIN_OPENS_ROOM_SCREEN).
+   * Sirf wahi hook instance call kare jo useWebSocket(wsHandlers) chalata
+   * hai (RoomsOverlayScreen) - warna room_joined ka jawab koi sunega nahi.
+   */
+  const autoJoinMyRoom = useCallback(async () => {
+    if (autoJoinDoneRef.current || activeRoomRef.current) return;
+    autoJoinDoneRef.current = true;
+    try {
+      const res = await getMyRoom();
+      const room = res.data?.room;
+      if (!room?.id) return; // room bana hi nahi hai
+      setMyRoom(room);
+
+      if (!networkManager.isConnected()) {
+        const ok = await networkManager.waitForConnection(10000);
+        if (!ok) {
+          autoJoinDoneRef.current = false;
+          return;
+        }
+      }
+      // Is beech user ne khud koi room khol liya ho to usse mat chhedo.
+      if (activeRoomRef.current || roomSwitchPendingRef.current) return;
+
+      silentRoomResyncRef.current = !AUTO_JOIN_OPENS_ROOM_SCREEN;
+      roomSwitchPendingRef.current = true;
+      setTimeout(() => {
+        roomSwitchPendingRef.current = false;
+      }, 6000);
+      networkManager.send({
+        type: 'room_join',
+        room_id: room.id,
+        x: ROOM_MAIN_GATE_POS.x,
+        y: ROOM_MAIN_GATE_POS.y,
+      });
+    } catch (err: any) {
+      autoJoinDoneRef.current = false;
+      console.error('Auto-join my room error:', err?.response?.data || err?.message);
+    }
+  }, []);
 
   /** Room ki SCREEN band karo - membership barkarar rehti hai. */
   const minimizeRoom = useCallback(() => {
@@ -605,6 +662,7 @@ export default function useRoomState({
     // actions
     fetchMyRoom,
     openRoom,
+    autoJoinMyRoom,
     minimizeRoom,
     exitRoom,
     handleRoomsNavClick,

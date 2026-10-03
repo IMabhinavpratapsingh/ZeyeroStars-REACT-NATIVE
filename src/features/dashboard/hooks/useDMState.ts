@@ -370,7 +370,9 @@ export default function useDMState({
   const autoAcceptRef = useRef<Map<string, Promise<boolean>>>(new Map());
 
   const sendMessage = useCallback(
-    async (text: string) => {
+    // replyingTo = jis message ka reply hai uski id (chat_messages.id) - sirf
+    // reply par; normal message mein undefined/null.
+    async (text: string, replyingTo?: string | number | null) => {
       if (!text || !text.trim() || !selectedDM) return;
       const targetId = getTargetId(selectedDM)!;
       const key = String(targetId);
@@ -385,6 +387,7 @@ export default function useDMState({
         content: text,
         sender_id: getMyId() as any,
         created_at: sentAt,
+        replying_to: replyingTo ?? null,
       } as any;
       // Bubble turant dikhao - accept ka network wait nahi.
       setChatMessages((prev) => [...prev, optimisticMsg]);
@@ -404,7 +407,12 @@ export default function useDMState({
       // WhatsApp/Instagram jaisa: connection na ho to bhi error nahi -
       // sendOrQueue() message ko queue karke khud reconnect trigger kar
       // deta hai, bubble "Sending..." dikhata rehta hai jab tak ack na aaye.
-      networkManager.sendOrQueue({ type: 'dm', target_id: targetId, message: text });
+      networkManager.sendOrQueue({
+        type: 'dm',
+        target_id: targetId,
+        message: text,
+        ...(replyingTo ? { replying_to: replyingTo } : {}),
+      });
 
       inbox.upsertInboxRow(
         targetId,
@@ -490,6 +498,7 @@ export default function useDMState({
           content: data.content,
           sender_id: data.sender_id,
           created_at: data.created_at,
+          replying_to: data.replying_to ?? null,
         } as any;
         setChatMessages((prev) => [...prev, newMsg]);
         appendCachedMessage(targetId, newMsg);

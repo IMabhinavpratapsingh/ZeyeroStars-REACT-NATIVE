@@ -141,6 +141,12 @@ export default function RoomsOverlayScreen({ show, onClose }: RoomsOverlayScreen
 
   useWebSocket(roomState.wsHandlers);
 
+  // App khulte hi apne room mein auto-join (agar room bana rakha hai).
+  const { autoJoinMyRoom } = roomState;
+  useEffect(() => {
+    autoJoinMyRoom();
+  }, [autoJoinMyRoom]);
+
   // Feed ke RoomsStrip se (Your Room / active room) seedha room join.
   const { openRoom: openRoomFromBus } = roomState;
   useEffect(() => subscribeOpenRoom((room) => openRoomFromBus(room)), [openRoomFromBus]);

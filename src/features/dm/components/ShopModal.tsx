@@ -1,5 +1,6 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  FlatList,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -213,6 +214,8 @@ const ShopModal = ({ show, onClose, balance = DEFAULT_BALANCE, onBalanceUpdate }
   // Floating "Limited" button: ON hone par sirf ABHI ACTIVE limited items
   // dikhte hain (is_limited && is_limited_active). OFF = normal shop.
   const [limitedOnly, setLimitedOnly] = useState(false);
+  const listRef = useRef<FlatList<any>>(null);
+  const limitedListRef = useRef<FlatList<any>>(null);
 
   // Har baar shop khulne par naya random order (upar naye-naye items aayein).
   // Random key har item ko ek baar milti hai aur shop band hone tak wahi
@@ -231,7 +234,7 @@ const ShopModal = ({ show, onClose, balance = DEFAULT_BALANCE, onBalanceUpdate }
   // is_default wali items sabko free milti hain (signup ke time hi) - shop
   // me nahi dikhani. Expire ho chuke limited items (is_limited_active=false)
   // bhi shop se gayab - backend /shop/items ka bhi yahi rule hai.
-  const items = useMemo(() => {
+  const shopItems = useMemo(() => {
     const keys = randomKeysRef.current;
     const keyOf = (id: string | number) => {
       const k = String(id);
@@ -242,12 +245,28 @@ const ShopModal = ({ show, onClose, balance = DEFAULT_BALANCE, onBalanceUpdate }
       .filter((item: any) => {
         if (item.is_default) return false;
         if (item.is_limited && !item.is_limited_active) return false;
-        if (limitedOnly) return !!item.is_limited;
-        return activeTab === ALL_TAB || item.item_category === activeTab;
+        return true;
       })
       .sort((a: any, b: any) => keyOf(a.items_id) - keyOf(b.items_id));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemsById, activeTab, limitedOnly, shuffleTick]);
+  }, [itemsById, shuffleTick]);
+
+  // Dono lists hamesha mounted rehti hain (limitedOnly sirf unhe hide/unhide
+  // karta hai) - isliye Limited <-> All toggle par koi mount/unmount nahi.
+  const items = useMemo(
+    () => shopItems.filter((item: any) => activeTab === ALL_TAB || item.item_category === activeTab),
+    [shopItems, activeTab]
+  );
+  const limitedItems = useMemo(() => shopItems.filter((item: any) => !!item.is_limited), [shopItems]);
+
+  // Naya random order / category badalne par list upar se dikhao. Limited
+  // toggle par scroll position nahi chhedte (hide/unhide mein wahi bachi rehti hai).
+  useEffect(() => {
+    listRef.current?.scrollToOffset({ offset: 0, animated: false });
+  }, [activeTab, shuffleTick]);
+  useEffect(() => {
+    limitedListRef.current?.scrollToOffset({ offset: 0, animated: false });
+  }, [shuffleTick]);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -289,6 +308,132 @@ const ShopModal = ({ show, onClose, balance = DEFAULT_BALANCE, onBalanceUpdate }
   };
 
   const cardWidth = (screenW - GRID_PADDING * 2 - GRID_GAP) / 2;
+
+  // FlatList row - sirf screen ke aas-paas ke cards mount hote hain.
+  const renderItem = ({ item }: { item: any }) => {
+        const asset = getAssetUrl(item.item_category, item.items_id);
+        const owned = quantities[item.items_id] || 0;
+        const qty = getQty(item.items_id);
+        const unitCoinPrice = item.coin_price || 0;
+        const unitZMoneyPrice = item.z_money_price || 0;
+        const isFree = unitCoinPrice === 0 && unitZMoneyPrice === 0;
+        const coinPrice = unitCoinPrice * qty;
+        const zMoneyPrice = unitZMoneyPrice * qty;
+        const itemPower = item.power || 0;
+        const isBuying = buyingId === item.items_id;
+        const canAfford = balance.coins >= coinPrice && balance.z_money >= zMoneyPrice;
+
+        return (
+          <View
+            key={item.items_id}
+            style={[
+              styles.card,
+              { width: cardWidth },
+              item.is_limited ? styles.cardLimited : styles.cardNormal,
+            ]}
+          >
+            {item.is_limited && (
+              <View style={styles.limitedBadge}>
+                <Ionicons name="timer-outline" size={10} color="#ffffff" />
+                <Text style={styles.badgeText}>Limited</Text>
+              </View>
+            )}
+
+            {owned > 0 && (
+              <View style={styles.ownedBadge}>
+                <Text style={styles.ownedText}>x{owned}</Text>
+              </View>
+            )}
+
+            <View style={styles.thumbBox}>
+              <AvatarItemThumb asset={asset} alt={item.item_name} />
+              <Pressable
+                onPress={() => setPreviewItem(item)}
+                style={styles.eyeBtn}
+                accessibilityLabel="Try on avatar"
+              >
+                <Ionicons name="eye-outline" size={13} color="#ffffff" />
+              </Pressable>
+            </View>
+
+            <Text style={styles.itemName} numberOfLines={1}>
+              {item.item_name}
+            </Text>
+
+            <View style={styles.priceRow}>
+              {coinPrice > 0 && (
+                <View style={styles.priceChip}>
+                  <CurrencyIcon type="coin" size={12} />
+                  <Text style={styles.priceText}>{coinPrice}</Text>
+                </View>
+              )}
+              {zMoneyPrice > 0 && (
+                <View style={styles.priceChip}>
+                  <CurrencyIcon type="zmoney" size={11} />
+                  <Text style={styles.priceText}>{zMoneyPrice}</Text>
+                </View>
+              )}
+              {isFree && <Text style={[styles.priceText, { color: '#4ade80' }]}>Free</Text>}
+            </View>
+
+            {itemPower > 0 && (
+              <View style={styles.powerRow}>
+                <Ionicons name="flash-outline" size={11} color="#fb923c" />
+                <Text style={styles.powerText}>+{itemPower} PWR</Text>
+              </View>
+            )}
+
+            {item.is_limited && (
+              <View style={styles.powerRow}>
+                <Ionicons name="shield-checkmark-outline" size={10} color="#facc15" />
+                <Text style={styles.verifiedText}>Verified only</Text>
+              </View>
+            )}
+
+            {/* Bulk-buy quantity stepper - free items ke liye zaroorat
+                nahi (price 0 hi rehta hai). */}
+            {!isFree && (
+              <View style={styles.stepper}>
+                <Pressable
+                  onPress={() => bumpQty(item.items_id, -1)}
+                  disabled={isBuying}
+                  style={[styles.stepBtn, isBuying && styles.dim]}
+                >
+                  <Text style={styles.stepBtnText}>−</Text>
+                </Pressable>
+                <QtyInput
+                  value={qty}
+                  disabled={isBuying}
+                  onChange={(n) => setQty(item.items_id, n)}
+                />
+                <Pressable
+                  onPress={() => bumpQty(item.items_id, 1)}
+                  disabled={isBuying || qty >= MAX_BUY_QTY}
+                  style={[styles.stepBtn, (isBuying || qty >= MAX_BUY_QTY) && styles.dim]}
+                >
+                  <Text style={styles.stepBtnText}>+</Text>
+                </Pressable>
+              </View>
+            )}
+
+            <Pressable
+              onPress={() => handleBuy(item)}
+              disabled={isBuying || !canAfford}
+              style={({ pressed }) => [
+                styles.buyBtn,
+                !canAfford ? styles.buyBtnOff : styles.buyBtnOn,
+                canAfford && isBuying && styles.dim,
+                pressed && canAfford && { backgroundColor: '#22c55e' },
+              ]}
+            >
+              <Text style={[styles.buyText, !canAfford && { color: '#6e6e6e' }]}>
+                {isBuying ? 'Buying...' : isFree ? (owned > 0 ? 'Buy More' : 'Buy') : `Buy x${qty}`}
+              </Text>
+            </Pressable>
+          </View>
+        );
+  };
+
 
   return (
     <SlideInRight
@@ -351,142 +496,47 @@ const ShopModal = ({ show, onClose, balance = DEFAULT_BALANCE, onBalanceUpdate }
         })}
       </ScrollView>
 
-      {/* Items grid */}
-      <ScrollView style={styles.flex} contentContainerStyle={styles.gridContent}>
-        {loading ? (
-          <Text style={styles.emptyText}>Loading...</Text>
-        ) : items.length === 0 ? (
-          <Text style={styles.emptyText}>
-            {limitedOnly ? 'No limited items active right now.' : 'No items in this category yet.'}
-          </Text>
-        ) : (
-          <View style={styles.grid}>
-            {items.map((item: any) => {
-              const asset = getAssetUrl(item.item_category, item.items_id);
-              const owned = quantities[item.items_id] || 0;
-              const qty = getQty(item.items_id);
-              const unitCoinPrice = item.coin_price || 0;
-              const unitZMoneyPrice = item.z_money_price || 0;
-              const isFree = unitCoinPrice === 0 && unitZMoneyPrice === 0;
-              const coinPrice = unitCoinPrice * qty;
-              const zMoneyPrice = unitZMoneyPrice * qty;
-              const itemPower = item.power || 0;
-              const isBuying = buyingId === item.items_id;
-              const canAfford = balance.coins >= coinPrice && balance.z_money >= zMoneyPrice;
-
-              return (
-                <View
-                  key={item.items_id}
-                  style={[
-                    styles.card,
-                    { width: cardWidth },
-                    item.is_limited ? styles.cardLimited : styles.cardNormal,
-                  ]}
-                >
-                  {item.is_limited && (
-                    <View style={styles.limitedBadge}>
-                      <Ionicons name="timer-outline" size={10} color="#ffffff" />
-                      <Text style={styles.badgeText}>Limited</Text>
-                    </View>
-                  )}
-
-                  {owned > 0 && (
-                    <View style={styles.ownedBadge}>
-                      <Text style={styles.ownedText}>x{owned}</Text>
-                    </View>
-                  )}
-
-                  <View style={styles.thumbBox}>
-                    <AvatarItemThumb asset={asset} alt={item.item_name} />
-                    <Pressable
-                      onPress={() => setPreviewItem(item)}
-                      style={styles.eyeBtn}
-                      accessibilityLabel="Try on avatar"
-                    >
-                      <Ionicons name="eye-outline" size={13} color="#ffffff" />
-                    </Pressable>
-                  </View>
-
-                  <Text style={styles.itemName} numberOfLines={1}>
-                    {item.item_name}
-                  </Text>
-
-                  <View style={styles.priceRow}>
-                    {coinPrice > 0 && (
-                      <View style={styles.priceChip}>
-                        <CurrencyIcon type="coin" size={12} />
-                        <Text style={styles.priceText}>{coinPrice}</Text>
-                      </View>
-                    )}
-                    {zMoneyPrice > 0 && (
-                      <View style={styles.priceChip}>
-                        <CurrencyIcon type="zmoney" size={11} />
-                        <Text style={styles.priceText}>{zMoneyPrice}</Text>
-                      </View>
-                    )}
-                    {isFree && <Text style={[styles.priceText, { color: '#4ade80' }]}>Free</Text>}
-                  </View>
-
-                  {itemPower > 0 && (
-                    <View style={styles.powerRow}>
-                      <Ionicons name="flash-outline" size={11} color="#fb923c" />
-                      <Text style={styles.powerText}>+{itemPower} PWR</Text>
-                    </View>
-                  )}
-
-                  {item.is_limited && (
-                    <View style={styles.powerRow}>
-                      <Ionicons name="shield-checkmark-outline" size={10} color="#facc15" />
-                      <Text style={styles.verifiedText}>Verified only</Text>
-                    </View>
-                  )}
-
-                  {/* Bulk-buy quantity stepper - free items ke liye zaroorat
-                      nahi (price 0 hi rehta hai). */}
-                  {!isFree && (
-                    <View style={styles.stepper}>
-                      <Pressable
-                        onPress={() => bumpQty(item.items_id, -1)}
-                        disabled={isBuying}
-                        style={[styles.stepBtn, isBuying && styles.dim]}
-                      >
-                        <Text style={styles.stepBtnText}>−</Text>
-                      </Pressable>
-                      <QtyInput
-                        value={qty}
-                        disabled={isBuying}
-                        onChange={(n) => setQty(item.items_id, n)}
-                      />
-                      <Pressable
-                        onPress={() => bumpQty(item.items_id, 1)}
-                        disabled={isBuying || qty >= MAX_BUY_QTY}
-                        style={[styles.stepBtn, (isBuying || qty >= MAX_BUY_QTY) && styles.dim]}
-                      >
-                        <Text style={styles.stepBtnText}>+</Text>
-                      </Pressable>
-                    </View>
-                  )}
-
-                  <Pressable
-                    onPress={() => handleBuy(item)}
-                    disabled={isBuying || !canAfford}
-                    style={({ pressed }) => [
-                      styles.buyBtn,
-                      !canAfford ? styles.buyBtnOff : styles.buyBtnOn,
-                      canAfford && isBuying && styles.dim,
-                      pressed && canAfford && { backgroundColor: '#22c55e' },
-                    ]}
-                  >
-                    <Text style={[styles.buyText, !canAfford && { color: '#6e6e6e' }]}>
-                      {isBuying ? 'Buying...' : isFree ? (owned > 0 ? 'Buy More' : 'Buy') : `Buy x${qty}`}
-                    </Text>
-                  </Pressable>
-                </View>
-              );
-            })}
-          </View>
-        )}
-      </ScrollView>
+      {/* Items grid - normal + limited DONO mounted rehti hain, bas
+          display none/flex se hide-unhide hoti hain (mount/unmount nahi). */}
+      <FlatList
+        ref={listRef}
+        data={loading ? [] : items}
+        renderItem={renderItem}
+        keyExtractor={(item: any) => String(item.items_id)}
+        extraData={{ quantities, buyQuantities, buyingId, balance }}
+        numColumns={2}
+        columnWrapperStyle={styles.gridRow}
+        style={[styles.flex, limitedOnly && styles.hidden]}
+        contentContainerStyle={styles.gridContent}
+        ListEmptyComponent={
+          <Text style={styles.emptyText}>{loading ? 'Loading...' : 'No items in this category yet.'}</Text>
+        }
+        keyboardShouldPersistTaps="handled"
+        initialNumToRender={6}
+        maxToRenderPerBatch={6}
+        updateCellsBatchingPeriod={30}
+        windowSize={5}
+        removeClippedSubviews
+      />
+      <FlatList
+        ref={limitedListRef}
+        data={loading ? [] : limitedItems}
+        renderItem={renderItem}
+        keyExtractor={(item: any) => `l-${item.items_id}`}
+        extraData={{ quantities, buyQuantities, buyingId, balance }}
+        numColumns={2}
+        columnWrapperStyle={styles.gridRow}
+        style={[styles.flex, !limitedOnly && styles.hidden]}
+        contentContainerStyle={styles.gridContent}
+        ListEmptyComponent={
+          <Text style={styles.emptyText}>{loading ? 'Loading...' : 'No limited items active right now.'}</Text>
+        }
+        keyboardShouldPersistTaps="handled"
+        initialNumToRender={6}
+        maxToRenderPerBatch={6}
+        updateCellsBatchingPeriod={30}
+        windowSize={5}
+      />
 
       {/* Floating "Limited" button - Home ke "+" FAB jaisa. Tap = sirf active
           limited items, dobara tap = wapas normal shop. */}
@@ -610,6 +660,8 @@ const styles = StyleSheet.create({
   gridContent: { padding: GRID_PADDING, paddingBottom: 92 },
   emptyText: { color: '#6e6e6e', textAlign: 'center', marginTop: 24 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: GRID_GAP },
+  hidden: { display: 'none' },
+  gridRow: { gap: GRID_GAP, marginBottom: GRID_GAP },
   card: {
     alignItems: 'center',
     backgroundColor: '#161616',

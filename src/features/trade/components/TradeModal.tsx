@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDime
 import { MotiView } from 'moti';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import CurrencyIcon from '../../../shared/components/CurrencyIcon';
 import AvatarItemThumb from '../../avatar/components/AvatarItemThumb';
 import { getAssetUrl } from '../../avatar/utils/avatarAssets';
 import useItemsCatalog from '../../../shared/hooks/useItemsCatalog';
@@ -156,8 +157,7 @@ const TradeModal = ({ trade, myBalance, onUpdateOffer, onConfirm, onCancel, embe
 
           <View style={{ marginTop: 12 }}>
             <View style={styles.zLabelRow}>
-              <Text style={styles.zLabel}>ⓩ</Text>
-              <Ionicons name="cash-outline" size={12} color="#a3a3a3" />
+              <CurrencyIcon type="zmoney" size={12} />
               <Text style={styles.zLabel}>Send Z Money:</Text>
             </View>
 
@@ -222,8 +222,7 @@ const TradeModal = ({ trade, myBalance, onUpdateOffer, onConfirm, onCancel, embe
           {renderItemGrid(otherOffer)}
           {otherOffer.z_money > 0 && (
             <View style={styles.otherZ}>
-              <Text style={styles.zLabel}>ⓩ</Text>
-              <Ionicons name="cash-outline" size={12} color="#a3a3a3" />
+              <CurrencyIcon type="zmoney" size={12} />
               <Text style={styles.zLabel}>Z Money: </Text>
               <Text style={styles.otherZValue}>{otherOffer.z_money}</Text>
             </View>

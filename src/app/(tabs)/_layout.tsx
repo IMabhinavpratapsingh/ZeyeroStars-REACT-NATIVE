@@ -42,6 +42,7 @@ import { getCommunityBySlug } from '../../features/communities/services/communit
 import { showAlert } from '../../shared/utils/alertBus';
 import { subscribeOpenOverlay, requestOpenDMChat, subscribeOpenRoom } from '../../shared/utils/navOverlayBus';
 import { subscribeOpenQuickActions } from '../../shared/utils/quickActionsBus';
+import { subscribeOpenStore, type StoreTabId } from '../../shared/utils/storeOpenBus';
 import { requestFeedScrollTopReload } from '../../shared/utils/feedScrollBus';
 import { subscribeOpenCommunity, requestOpenCommunityBySlug, requestOpenCommunityById } from '../../shared/utils/communityOpenBus';
 import { subscribeOpenProfile, type ProfileOpenPayload } from '../../shared/utils/profileOpenBus';
@@ -147,6 +148,7 @@ export default function TabsLayout() {
   // Quick-actions sheet ke tiles ki screens - Header ke Shop/Search jaise
   // hi in-tree overlays (route nahi), sirf `show` boolean se khulte hain.
   const [showStore, setShowStore] = useState(false);
+  const [storeTab, setStoreTab] = useState<StoreTabId>('subscriptions');
   const [showMissions, setShowMissions] = useState(false);
   const [showDailyPopup, setShowDailyPopup] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
@@ -412,6 +414,17 @@ export default function TabsLayout() {
   // nahi kholta (woh sirf Home hai), isliye ek dedicated bus se sunte hain.
   useEffect(() => subscribeOpenQuickActions(() => openQuickActions()), []);
 
+  // Shop / Limited Store ke Z Money "+" button se - Shop band NAHI karte,
+  // Store uske upar khulta hai (back dabane par wapas Shop).
+  useEffect(
+    () =>
+      subscribeOpenStore((tab) => {
+        setStoreTab(tab);
+        setShowStore(true);
+      }),
+    [],
+  );
+
   // --- swipe transition state (ab sirf Dashboard<->Profile ke beech) ----
   const prevIndexRef = useRef(tabIndexFromPath(pathname));
   const translateX = useSharedValue(0);
@@ -482,6 +495,7 @@ export default function TabsLayout() {
   // baaki overlays bhi hata do, phir target screen kholo.
   const openStore = useCallback(() => {
     closeAllOverlayPanels();
+    setStoreTab('subscriptions');
     setShowStore(true);
   }, [closeAllOverlayPanels]);
   const openMissions = useCallback(() => {
@@ -632,6 +646,7 @@ export default function TabsLayout() {
 
       <StoreScreen
         show={showStore}
+        initialTab={storeTab}
         onClose={() => setShowStore(false)}
         onBalanceUpdate={(updater: any) => setBalance((prev) => (typeof updater === 'function' ? updater(prev) : { ...prev, ...updater }))}
       />

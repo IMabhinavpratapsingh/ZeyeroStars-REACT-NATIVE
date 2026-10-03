@@ -14,6 +14,7 @@ import { MotiView } from 'moti';
 import Animated, { useAnimatedKeyboard, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import CurrencyIcon from '../../../shared/components/CurrencyIcon';
 import SwipeableBubble from '../../../shared/components/SwipeableBubble';
 import VerifiedBadge from '../../../shared/components/VerifiedBadge';
 import EliteBadge from '../../../shared/components/EliteBadge';
@@ -173,7 +174,7 @@ const DMMessageBubble = memo(
           {!!dateLabel && <DatePill label={dateLabel} />}
           <View style={styles.tipWrap}>
             <View style={styles.tipPill}>
-              <Ionicons name="cash-outline" size={11} color="#fde047" />
+              <CurrencyIcon type="zmoney" size={11} />
               <Text style={styles.tipText}>{msg.content}</Text>
             </View>
           </View>
@@ -262,7 +263,7 @@ const DMMessageBubble = memo(
                       ]
                     : [
                         { label: 'Reply', icon: <Ionicons name="arrow-undo-outline" size={16} color="#ffffff" />, onClick: onReply },
-                        { label: 'Tip', icon: <Ionicons name="cash-outline" size={16} color="#ffffff" />, onClick: onTip },
+                        { label: 'Tip', icon: <CurrencyIcon type="zmoney" size={16} />, onClick: onTip },
                         { label: 'Report', icon: <Ionicons name="warning-outline" size={16} color="#f87171" />, danger: true, onClick: onReport },
                       ]
                 }

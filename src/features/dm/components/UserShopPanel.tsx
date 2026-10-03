@@ -15,6 +15,7 @@ import {
 import axios from 'axios';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import CurrencyIcon from '../../../shared/components/CurrencyIcon';
 import { API_BASE } from '../../../shared/config/config';
 import { getToken } from '../../../shared/services/NetworkManager';
 import { showAlert } from '../../../shared/utils/alertBus';
@@ -114,7 +115,7 @@ const ItemActionSheet = ({
                   onPress={() => onOpenHashtag?.(toHashtag(itemInfo?.item_name))}
                 />
                 <View style={styles.priceRowLg}>
-                  <Ionicons name="cash-outline" size={16} color="#f6bc7a" />
+                  <CurrencyIcon type="zmoney" size={16} />
                   <Text style={styles.priceLg}>{Number(item.price).toLocaleString()}</Text>
                 </View>
               </View>
@@ -263,7 +264,7 @@ const AddItemModal = ({ show, itemsById, ownedIds, alreadyListedIds, onClose, on
                 </View>
 
                 <View style={styles.priceInputRow}>
-                  <Ionicons name="cash-outline" size={16} color="#f6bc7a" />
+                  <CurrencyIcon type="zmoney" size={16} />
                   <TextInput
                     value={price}
                     onChangeText={(t) => {
@@ -469,7 +470,7 @@ const UserShopPanel = ({
                   />
                 </View>
                 <View style={styles.priceRowSm}>
-                  <Ionicons name="cash-outline" size={12} color="#f6bc7a" />
+                  <CurrencyIcon type="zmoney" size={12} />
                   <Text style={styles.priceSm}>{Number(listing.price).toLocaleString()}</Text>
                 </View>
                 {isMe && (

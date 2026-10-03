@@ -5,7 +5,7 @@
    viewBox="0 0 400 400"
    version="1.1"
    id="svg165"
-   sodipodi:docname="3_Pixel_8bit (1).svg"
+   sodipodi:docname="3_Pixel_8bit.svg"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns="http://www.w3.org/2000/svg"
@@ -47,27 +47,98 @@
   </clipPath>
   <g
      clip-path="url(#cc)"
-     id="g165">
+     id="g165"
+     inkscape:groupmode="layer"
+     inkscape:label="background">
+    <path
+       id="rect2"
+       style="fill:#1b1b3a"
+       d="m 28,0 h 344 c 15.512,0 28,12.488 28,28 v 344 c 0,15.512 -12.488,28 -28,28 H 28 C 12.488,400 0,387.512 0,372 V 28 C 0,12.488 12.488,0 28,0 Z" />
+    <path
+       id="rect142"
+       style="fill:#ffe14d"
+       d="M 36,40 H 46 V 50 H 36 Z" />
+    <path
+       id="rect143"
+       style="fill:#ffe14d"
+       d="M 46,40 H 56 V 50 H 46 Z" />
+    <path
+       id="rect144"
+       style="fill:#ffe14d"
+       d="M 26,40 H 36 V 50 H 26 Z" />
+    <path
+       id="rect145"
+       style="fill:#ffe14d"
+       d="M 36,50 H 46 V 60 H 36 Z" />
+    <path
+       id="rect146"
+       style="fill:#ffe14d"
+       d="M 36,30 H 46 V 40 H 36 Z" />
+    <path
+       id="rect147"
+       style="fill:#ffe14d"
+       d="m 340,48 h 10 v 10 h -10 z" />
+    <path
+       id="rect148"
+       style="fill:#ffe14d"
+       d="m 350,48 h 10 v 10 h -10 z" />
+    <path
+       id="rect149"
+       style="fill:#ffe14d"
+       d="m 330,48 h 10 v 10 h -10 z" />
+    <path
+       id="rect150"
+       style="fill:#ffe14d"
+       d="m 340,58 h 10 v 10 h -10 z" />
+    <path
+       id="rect151"
+       style="fill:#ffe14d"
+       d="m 340,38 h 10 v 10 h -10 z" />
+    <path
+       id="rect152"
+       style="fill:#ffe14d"
+       d="m 44,350 h 10 v 10 H 44 Z" />
+    <path
+       id="rect153"
+       style="fill:#ffe14d"
+       d="m 54,350 h 10 v 10 H 54 Z" />
+    <path
+       id="rect154"
+       style="fill:#ffe14d"
+       d="m 34,350 h 10 v 10 H 34 Z" />
+    <path
+       id="rect155"
+       style="fill:#ffe14d"
+       d="m 44,360 h 10 v 10 H 44 Z" />
+    <path
+       id="rect156"
+       style="fill:#ffe14d"
+       d="m 44,340 h 10 v 10 H 44 Z" />
+    <path
+       id="rect157"
+       style="fill:#ffe14d"
+       d="m 344,340 h 10 v 10 h -10 z" />
+    <path
+       id="rect158"
+       style="fill:#ffe14d"
+       d="m 354,340 h 10 v 10 h -10 z" />
+    <path
+       id="rect159"
+       style="fill:#ffe14d"
+       d="m 334,340 h 10 v 10 h -10 z" />
+    <path
+       id="rect160"
+       style="fill:#ffe14d"
+       d="m 344,350 h 10 v 10 h -10 z" />
+    <path
+       id="rect161"
+       style="fill:#ffe14d"
+       d="m 344,330 h 10 v 10 h -10 z" />
     <clipPath
        id="av3">
       <path
          id="circle162"
          d="m 293,200 a 93,93 0 0 1 -93,93 93,93 0 0 1 -93,-93 93,93 0 0 1 93,-93 93,93 0 0 1 93,93 z" />
     </clipPath>
-    <path
-       id="circle163"
-       d="m 293,200 a 93,93 0 0 1 -93,93 93,93 0 0 1 -93,-93 93,93 0 0 1 93,-93 93,93 0 0 1 93,93 z" />
-    <g
-       clip-path="url(#av3)"
-       id="g164">
-      <path
-         id="circle164"
-         style="fill:#e0e0e0"
-         d="M 237.2,182 A 37.200001,37.200001 0 0 1 200,219.2 37.200001,37.200001 0 0 1 162.8,182 37.200001,37.200001 0 0 1 200,144.8 37.200001,37.200001 0 0 1 237.2,182 Z" />
-      <path
-         id="ellipse164"
-         style="fill:#e0e0e0"
-         d="m 266.96,288.35001 a 66.959999,57.66 0 0 1 -66.96,57.66 66.959999,57.66 0 0 1 -66.96,-57.66 66.959999,57.66 0 0 1 66.96,-57.66 66.959999,57.66 0 0 1 66.96,57.66 z" />
-    </g>
   </g>
 </svg>

@@ -1,6 +1,7 @@
 import React, { memo, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import CurrencyIcon from '../../../shared/components/CurrencyIcon';
 import useMissions from '../hooks/useMissions';
 import useTopZIndex from '../../../shared/hooks/useTopZIndex';
 import { FadeIn, CardPop } from '../../../shared/components/motion/ScreenTransition';
@@ -51,7 +52,7 @@ const MissionRow = ({ mission, onClaim, claimingId }: MissionRowProps) => {
           </View>
         </View>
         <View style={styles.rowReward}>
-          <Ionicons name="logo-bitcoin" size={12} color="#f5c451" />
+          <CurrencyIcon type="coin" size={12} />
           <Text style={styles.rowRewardText}>{mission.coin_reward}</Text>
         </View>
       </View>

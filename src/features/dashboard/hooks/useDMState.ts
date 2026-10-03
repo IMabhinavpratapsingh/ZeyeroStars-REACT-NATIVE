@@ -268,42 +268,6 @@ export default function useDMState({
     }
   }, [chatMessages, dmHasMore, dmLoadingMore, selectedDM]);
 
-  const sendMessage = useCallback(
-    (text: string) => {
-      if (!text || !text.trim() || !selectedDM) return;
-      const targetId = getTargetId(selectedDM)!;
-
-      // WhatsApp/Instagram jaisa: connection na ho to bhi error nahi -
-      // sendOrQueue() message ko queue karke khud reconnect trigger kar
-      // deta hai, bubble "Sending..." dikhata rehta hai jab tak ack na aaye.
-      networkManager.sendOrQueue({ type: 'dm', target_id: targetId, message: text });
-
-      const sentAt = new Date().toISOString();
-      const optimisticMsg: CachedDMMessage = {
-        content: text,
-        sender_id: getMyId() as any,
-        created_at: sentAt,
-      } as any;
-      setChatMessages((prev) => [...prev, optimisticMsg]);
-      appendCachedMessage(targetId, optimisticMsg);
-
-      inbox.upsertInboxRow(
-        targetId,
-        { last_message: text, last_message_time: sentAt, last_message_mine: true },
-        {
-          target_id: targetId,
-          username: selectedDM.username,
-          is_verified: !!selectedDM.is_verified,
-          last_message: text,
-          last_message_time: sentAt,
-          last_message_mine: true,
-          unread_count: 0,
-        }
-      );
-    },
-    [inbox, selectedDM]
-  );
-
   const deleteDMMessage = useCallback(async (messageId: string | number) => {
     if (!messageId) return;
     const ok = await confirmAction({
@@ -361,7 +325,7 @@ export default function useDMState({
   );
 
   const acceptMessageRequest = useCallback(
-    async (targetId: string | number) => {
+    async (targetId: string | number): Promise<boolean> => {
       const reqRow = inbox.requestsList.find((r: InboxRow) => String(r.target_id) === String(targetId));
       try {
         const token = getToken();
@@ -389,12 +353,74 @@ export default function useDMState({
             }
           );
         }
+        return true;
       } catch (err: any) {
         console.error('Accept request error:', err?.response?.data || err?.message);
         showAlert('Could not accept this request, try again.');
+        return false;
       }
     },
     [inbox]
+  );
+
+  // Request wali chat mein bina Accept dabaye reply karo to pehle request
+  // AUTO-ACCEPT hoti hai, phir message jaata hai (pehle accept kabhi call hi
+  // nahi hota tha, request pending hi rehti thi). In-flight map: tez double
+  // send par accept sirf ek baar chale.
+  const autoAcceptRef = useRef<Map<string, Promise<boolean>>>(new Map());
+
+  const sendMessage = useCallback(
+    async (text: string) => {
+      if (!text || !text.trim() || !selectedDM) return;
+      const targetId = getTargetId(selectedDM)!;
+      const key = String(targetId);
+
+      const isIncomingRequest =
+        autoAcceptRef.current.has(key) ||
+        dmRequestLocks[key] === 'pending_incoming' ||
+        inbox.requestsList.some((r: InboxRow) => String(r.target_id) === key);
+
+      const sentAt = new Date().toISOString();
+      const optimisticMsg: CachedDMMessage = {
+        content: text,
+        sender_id: getMyId() as any,
+        created_at: sentAt,
+      } as any;
+      // Bubble turant dikhao - accept ka network wait nahi.
+      setChatMessages((prev) => [...prev, optimisticMsg]);
+      appendCachedMessage(targetId, optimisticMsg);
+
+      if (isIncomingRequest) {
+        let pending = autoAcceptRef.current.get(key);
+        if (!pending) {
+          pending = acceptMessageRequest(targetId).finally(() => {
+            autoAcceptRef.current.delete(key);
+          });
+          autoAcceptRef.current.set(key, pending);
+        }
+        await pending; // fail ho to bhi message bhejo (queue hota hai), alert dikh chuka hoga
+      }
+
+      // WhatsApp/Instagram jaisa: connection na ho to bhi error nahi -
+      // sendOrQueue() message ko queue karke khud reconnect trigger kar
+      // deta hai, bubble "Sending..." dikhata rehta hai jab tak ack na aaye.
+      networkManager.sendOrQueue({ type: 'dm', target_id: targetId, message: text });
+
+      inbox.upsertInboxRow(
+        targetId,
+        { last_message: text, last_message_time: sentAt, last_message_mine: true },
+        {
+          target_id: targetId,
+          username: selectedDM.username,
+          is_verified: !!selectedDM.is_verified,
+          last_message: text,
+          last_message_time: sentAt,
+          last_message_mine: true,
+          unread_count: 0,
+        }
+      );
+    },
+    [inbox, selectedDM, dmRequestLocks, acceptMessageRequest]
   );
 
   const declineMessageRequest = useCallback(

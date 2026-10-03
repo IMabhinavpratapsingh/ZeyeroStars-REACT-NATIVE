@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MotiView } from 'moti';
 import { Ionicons } from '@expo/vector-icons';
+import CurrencyIcon from './CurrencyIcon';
 import useRankRewards from '../hooks/useRankRewards';
 import useItemsCatalog from '../hooks/useItemsCatalog';
 import useBackButtonHandler from '../hooks/useBackButtonHandler';
@@ -240,7 +241,7 @@ const RankRewardsScreen = ({
                   >
                     <View style={styles.thumb}>
                       {isCoins ? (
-                        <Ionicons name="cash-outline" size={22} color="#eab308" />
+                        <CurrencyIcon type="coin" size={22} />
                       ) : item ? (
                         <AvatarItemThumb asset={iconUrl} alt={item.item_name} />
                       ) : (

@@ -48,7 +48,14 @@ export const CATEGORY_LABELS: Record<AvatarCategory, string> = {
 // baaki placeholders comment mein hain.
 const REGISTRY: Record<AvatarCategory, Record<string, any>> = {
   back: {
-    // '1': require('../../../assets/back/1.svg'),
+    '13': require('../../../assets/back/13.svg'),
+    '15': require('../../../assets/back/15.svg'),
+    '17': require('../../../assets/back/17.svg'),
+    '19': require('../../../assets/back/19.svg'),
+    '21': require('../../../assets/back/21.svg'),
+    '23': require('../../../assets/back/23.svg'),
+    '25': require('../../../assets/back/25.svg'),
+    '27': require('../../../assets/back/27.svg'),
   },
   front: {
     // '1': require('../../../assets/front/1.svg'),
@@ -60,6 +67,14 @@ const REGISTRY: Record<AvatarCategory, Record<string, any>> = {
     '9': require('../../../assets/frame/9.svg'),
     '10': require('../../../assets/frame/10.svg'),
     '11': require('../../../assets/frame/11.svg'),
+    '12': require('../../../assets/frame/12.svg'),
+    '14': require('../../../assets/frame/14.svg'),
+    '16': require('../../../assets/frame/16.svg'),
+    '18': require('../../../assets/frame/18.svg'),
+    '20': require('../../../assets/frame/20.svg'),
+    '22': require('../../../assets/frame/22.svg'),
+    '24': require('../../../assets/frame/24.svg'),
+    '26': require('../../../assets/frame/26.svg'),
   },
 };
 
@@ -73,12 +88,12 @@ export const getAssetUrl = (category: AvatarCategory | string, itemsId: number |
 // (Inkscape se) - matlab avatar ko kahin bhi render karo, container ka box
 // hamesha isi width:height ratio ka hona chahiye, warna har layer thoda
 // alag scale hoti hai aur items base se misaligned dikhte hain.
-// AvatarPlane.svg ka viewBox "0 0 350 250" hai (canonical canvas).
+// AvatarPlane.svg ka viewBox "0 0 400 400" hai (canonical canvas).
 //
 // RN: `aspectRatio` style ko NUMBER do (350 / 250 = 1.4) - JS mein
 // `Number("350 / 250")` NaN deta hai, isliye neeche numeric version hi
 // asli source of truth hai. String version sirf web-compat ke liye.
-export const AVATAR_ASPECT_RATIO_NUM = 350 / 250;
-export const AVATAR_ASPECT_RATIO = '350 / 250';
+export const AVATAR_ASPECT_RATIO_NUM = 400 / 400;
+export const AVATAR_ASPECT_RATIO = '400 / 400';
 
 export default REGISTRY;

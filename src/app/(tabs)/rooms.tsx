@@ -55,12 +55,17 @@ interface Room {
   owner_username?: string;
 }
 
-const RoomCard = ({ room, onPress }: { room: Room; onPress: () => void }) => (
+const RoomCard = ({ room, onPress, isActive = false }: { room: Room; onPress: () => void; isActive?: boolean }) => (
   <Pressable
     onPress={onPress}
-    style={[styles.card, { borderColor: room.is_team ? '#e8c34a' : '#27272a' }]}
+    style={[styles.card, { borderColor: isActive ? '#22c55e' : room.is_team ? '#e8c34a' : '#27272a' }]}
   >
     <View style={styles.cover}>
+      {isActive && (
+        <View style={styles.hereBadge}>
+          <Text style={styles.hereText}>You're here</Text>
+        </View>
+      )}
       {room.room_icon_url ? (
         <Image source={{ uri: room.room_icon_url }} style={styles.coverImg} />
       ) : (
@@ -190,6 +195,34 @@ export default function RoomsScreen() {
         </Pressable>
       </View>
 
+      {/* Room minimize (back) hone ke baad bhi user ko dikhe ki wo kis room mein hai + wapas/exit ka button */}
+      {!!roomState.activeRoom && !roomState.roomScreenVisible && (
+        <Pressable style={styles.activeBanner} onPress={() => roomState.setRoomScreenVisible(true)}>
+          <View style={styles.activeDot} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.activeLabel}>You're in a room</Text>
+            <Text style={styles.activeName} numberOfLines={1}>
+              {roomState.activeRoom.room_name ||
+                rooms.find((r) => String(r.id) === String(roomState.activeRoom?.id))?.room_name ||
+                'Room'}
+            </Text>
+          </View>
+          <View style={styles.returnBtn}>
+            <Text style={styles.returnText}>Return</Text>
+          </View>
+          <Pressable
+            style={styles.leaveBtn}
+            onPress={() => {
+              roomState.exitRoom();
+              loadRooms({ silent: true });
+            }}
+            hitSlop={8}
+          >
+            <Text style={styles.leaveText}>Exit</Text>
+          </Pressable>
+        </Pressable>
+      )}
+
       {showCreate && (
         <View style={styles.createRow}>
           <TextInput
@@ -224,7 +257,11 @@ export default function RoomsScreen() {
           contentContainerStyle={styles.listContent}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#ffffff" />}
           renderItem={({ item }) => (
-            <RoomCard room={item} onPress={() => roomState.openRoom(item as any)} />
+            <RoomCard
+              room={item}
+              isActive={String(roomState.activeRoom?.id) === String(item.id)}
+              onPress={() => roomState.openRoom(item as any)}
+            />
           )}
         />
       )}
@@ -306,6 +343,23 @@ const styles = StyleSheet.create({
   },
   createSubmitDisabled: { opacity: 0.4 },
   createSubmitText: { color: '#000000', fontWeight: '700', fontSize: 13 },
+  activeBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    marginHorizontal: 16, marginBottom: 12, paddingVertical: 10, paddingHorizontal: 12,
+    backgroundColor: '#052e16', borderWidth: 1, borderColor: '#22c55e', borderRadius: 12,
+  },
+  activeDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#22c55e' },
+  activeLabel: { fontSize: 10, color: '#86efac', fontWeight: '600' },
+  activeName: { fontSize: 14, color: '#ffffff', fontWeight: '700' },
+  returnBtn: { backgroundColor: '#22c55e', borderRadius: 999, paddingHorizontal: 14, paddingVertical: 6 },
+  returnText: { color: '#000000', fontWeight: '700', fontSize: 12 },
+  leaveBtn: { borderWidth: 1, borderColor: '#f87171', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 5 },
+  leaveText: { color: '#f87171', fontWeight: '700', fontSize: 12 },
+  hereBadge: {
+    position: 'absolute', top: 8, left: 8, zIndex: 2,
+    backgroundColor: '#22c55e', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999,
+  },
+  hereText: { fontSize: 10, fontWeight: '700', color: '#000000' },
   centerFill: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   emptyText: { color: '#71717a', fontSize: 13 },
   listContent: { paddingHorizontal: 16, paddingBottom: 24 },

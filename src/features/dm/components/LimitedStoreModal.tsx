@@ -4,6 +4,8 @@ import axios from 'axios';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import CurrencyIcon from '../../../shared/components/CurrencyIcon';
+import { requestOpenStore } from '../../../shared/utils/storeOpenBus';
 import { API_BASE } from '../../../shared/config/config';
 import { getToken } from '../../../shared/services/NetworkManager';
 import { getBottomNavTotal } from '../../../shared/constants/layout';
@@ -169,12 +171,19 @@ const LimitedStoreModal = ({
           </Text>
         </View>
         <View style={styles.balanceRow}>
-          <Ionicons name="cash-outline" size={14} color="#ffffff" />
+          <CurrencyIcon type="coin" size={14} />
           <Text style={styles.balanceText}>{balance.coins}</Text>
           <Text style={styles.balanceText}>|</Text>
-          <Text style={styles.balanceText}>ⓩ</Text>
-          <Ionicons name="cash-outline" size={13} color="#ffffff" />
+          <CurrencyIcon type="zmoney" size={13} />
           <Text style={styles.balanceText}>{balance.z_money}</Text>
+          <Pressable
+            onPress={() => requestOpenStore('zmoney')}
+            hitSlop={8}
+            accessibilityLabel="Buy Z Money"
+            style={styles.plusBtn}
+          >
+            <Ionicons name="add" size={14} color="#ffffff" />
+          </Pressable>
         </View>
       </View>
 
@@ -227,14 +236,13 @@ const LimitedStoreModal = ({
                   <View style={styles.priceRow}>
                     {coinPrice > 0 && (
                       <View style={styles.priceChip}>
-                        <Ionicons name="cash-outline" size={12} color="#ffffff" />
+                        <CurrencyIcon type="coin" size={12} />
                         <Text style={styles.priceText}>{coinPrice}</Text>
                       </View>
                     )}
                     {zMoneyPrice > 0 && (
                       <View style={styles.priceChip}>
-                        <Text style={styles.priceText}>ⓩ</Text>
-                        <Ionicons name="cash-outline" size={11} color="#ffffff" />
+                        <CurrencyIcon type="zmoney" size={11} />
                         <Text style={styles.priceText}>{zMoneyPrice}</Text>
                       </View>
                     )}
@@ -301,6 +309,15 @@ const styles = StyleSheet.create({
   headerTitle: { color: '#ffffff', fontWeight: '700', fontSize: 16, flexShrink: 1 },
   balanceRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   balanceText: { color: '#ffffff', fontWeight: '700', fontSize: 13 },
+  plusBtn: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    marginLeft: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#22c55e',
+  },
   gridContent: { padding: GRID_PADDING, paddingBottom: 32 },
   emptyText: { color: '#6e6e6e', textAlign: 'center', marginTop: 24 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: GRID_GAP },

@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { MotiView } from 'moti';
 import { Ionicons } from '@expo/vector-icons';
+import CurrencyIcon from '../../../shared/components/CurrencyIcon';
 import SwipeableBubble from '../../../shared/components/SwipeableBubble';
 import VerifiedBadge from '../../../shared/components/VerifiedBadge';
 import EliteBadge from '../../../shared/components/EliteBadge';
@@ -77,7 +78,7 @@ const RoomMessageBubble = memo(
       return (
         <View style={styles.centerRow}>
           <View style={styles.tipPill}>
-            <Ionicons name="cash-outline" size={11} color="#fde047" />
+            <CurrencyIcon type="zmoney" size={11} />
             <Text style={styles.tipPillText}>{msg.content}</Text>
           </View>
         </View>
@@ -129,7 +130,7 @@ const RoomMessageBubble = memo(
                 </Pressable>
                 {!isMeMsg && (
                   <Pressable onPress={onTip} style={styles.actionRow}>
-                    <Ionicons name="cash-outline" size={14} color="#ffffff" />
+                    <CurrencyIcon type="zmoney" size={14} />
                     <Text style={styles.actionText}>Tip</Text>
                   </Pressable>
                 )}

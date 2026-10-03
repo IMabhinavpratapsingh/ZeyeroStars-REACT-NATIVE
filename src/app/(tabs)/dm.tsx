@@ -89,7 +89,9 @@ export default function DMScreen() {
         requestsLoadingMore={inbox.requestsLoadingMore}
         onLoadMoreRequests={inbox.loadMoreRequests}
         onRefreshRequests={inbox.refreshRequests}
-        onAcceptRequest={(id) => dm.acceptMessageRequest(id)}
+        onAcceptRequest={async (id) => {
+          await dm.acceptMessageRequest(id);
+        }}
         onDeclineRequest={(id) => dm.declineMessageRequest(id)}
         onDeleteConversation={(id) => dm.deleteConversation(id)}
       />
@@ -104,6 +106,9 @@ export default function DMScreen() {
           onLoadMore={dm.loadMoreDMHistory}
           onSend={dm.sendMessage}
           isOtherTyping={dm.dmOtherTyping}
+          requestLock={(dm.dmRequestLocks as any)[String(dm.selectedDM.id ?? dm.selectedDM.target_id)] ?? null}
+          onAcceptRequest={() => dm.acceptMessageRequest((dm.selectedDM!.id ?? dm.selectedDM!.target_id) as any)}
+          onDeclineRequest={() => dm.declineMessageRequest((dm.selectedDM!.id ?? dm.selectedDM!.target_id) as any)}
           onClose={handleCloseChat}
           getMyId={getMyId}
           onDeleteMessage={dm.deleteDMMessage}

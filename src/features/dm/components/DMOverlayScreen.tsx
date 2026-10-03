@@ -156,6 +156,8 @@ export default function DMOverlayScreen({ show, onClose, onOpenOverlay, myBalanc
       hasMore: dm.dmHasMore,
       loadingMore: dm.dmLoadingMore,
       typing: dm.dmOtherTyping,
+      requestLock:
+        (dm.dmRequestLocks as any)[String(dm.selectedDM?.id ?? dm.selectedDM?.target_id)] ?? null,
     };
   }
   useEffect(() => {
@@ -224,8 +226,19 @@ export default function DMOverlayScreen({ show, onClose, onOpenOverlay, myBalanc
     setShowInbox(true);
   }, []);
 
-  const handleAcceptRequest = useCallback((id: any) => dmRef.current.acceptMessageRequest(id), []);
+  const handleAcceptRequest = useCallback(async (id: any): Promise<void> => {
+    await dmRef.current.acceptMessageRequest(id);
+  }, []);
   const handleDeclineRequest = useCallback((id: any) => dmRef.current.declineMessageRequest(id), []);
+  // Chat ke andar ke Accept/Decline buttons (id current chat se).
+  const handleChatAccept = useCallback(() => {
+    const u = dmRef.current.selectedDM;
+    if (u) dmRef.current.acceptMessageRequest((u.id ?? u.target_id) as any);
+  }, []);
+  const handleChatDecline = useCallback(() => {
+    const u = dmRef.current.selectedDM;
+    if (u) dmRef.current.declineMessageRequest((u.id ?? u.target_id) as any);
+  }, []);
   const handleDeleteConversation = useCallback((id: any) => dmRef.current.deleteConversation(id), []);
   const handleLoadMore = useCallback(() => dmRef.current.loadMoreDMHistory(), []);
   const handleSend = useCallback((text: string) => dmRef.current.sendMessage(text), []);
@@ -272,6 +285,9 @@ export default function DMOverlayScreen({ show, onClose, onOpenOverlay, myBalanc
             onLoadMore={handleLoadMore}
             onSend={handleSend}
             isOtherTyping={snap.typing}
+            requestLock={snap.requestLock}
+            onAcceptRequest={handleChatAccept}
+            onDeclineRequest={handleChatDecline}
             onClose={handleCloseChat}
             getMyId={getMyId}
             onDeleteMessage={handleDeleteMsg}

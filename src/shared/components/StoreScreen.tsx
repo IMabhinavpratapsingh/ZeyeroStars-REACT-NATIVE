@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import CurrencyIcon from './CurrencyIcon';
 import useBackButtonHandler from '../hooks/useBackButtonHandler';
 import useTopZIndex from '../hooks/useTopZIndex';
 import VerifiedBadge from './VerifiedBadge';
@@ -36,11 +37,13 @@ type TabId = (typeof TABS)[number]['id'];
 
 interface StoreScreenProps {
   show: boolean;
+  /** Kholte waqt kaunsa tab dikhana hai (default: subscriptions) */
+  initialTab?: TabId;
   onClose: () => void;
   onBalanceUpdate?: (updater: (prev: any) => any) => void;
 }
 
-const StoreScreen = ({ show, onClose, onBalanceUpdate }: StoreScreenProps) => {
+const StoreScreen = ({ show, initialTab = 'subscriptions', onClose, onBalanceUpdate }: StoreScreenProps) => {
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<TabId>('subscriptions');
   const [buyingVerified, setBuyingVerified] = useState(false);
@@ -49,6 +52,11 @@ const StoreScreen = ({ show, onClose, onBalanceUpdate }: StoreScreenProps) => {
 
   useBackButtonHandler(show, onClose);
   const zIndex = useTopZIndex(show);
+
+  // Har baar khulte hi requested tab par jao (jaise Shop ke "+" se Z Money tab)
+  useEffect(() => {
+    if (show) setTab(initialTab);
+  }, [show, initialTab]);
 
   useEffect(() => {
     if (!show) return;
@@ -175,7 +183,7 @@ const StoreScreen = ({ show, onClose, onBalanceUpdate }: StoreScreenProps) => {
             {Z_MONEY_PRODUCTS.map((p) => (
               <View key={p.id} style={styles.zmoneyCard}>
                 <View style={styles.zmoneyIconWrap}>
-                  <Ionicons name="logo-bitcoin" size={22} color="#fbbf24" />
+                  <CurrencyIcon type="zmoney" size={22} />
                 </View>
                 <View style={styles.zmoneyInfo}>
                   <Text style={styles.cardTitle}>{p.amount} Z Money</Text>

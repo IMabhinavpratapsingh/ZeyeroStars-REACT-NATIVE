@@ -25,8 +25,8 @@ import { AVATAR_PHOTO_RECT, buildAvatarPlaneXml } from '../utils/avatarPlane';
  * Skin-color customization hata di gayi hai - base hamesha ek fixed
  * DEFAULT_SKIN_COLOR me render hota hai.
  */
-const DEFAULT_SKIN_COLOR = '#F1C27D';
-const PLANE_XML = buildAvatarPlaneXml(DEFAULT_SKIN_COLOR);
+const PLANE_XML_EMPTY = buildAvatarPlaneXml(true); // photo nahi => silhouette
+const PLANE_XML_PHOTO = buildAvatarPlaneXml(false); // photo hai => sirf backdrop
 
 const pct = (frac: number) => `${frac * 100}%` as `${number}%`;
 
@@ -37,7 +37,7 @@ interface AvatarBaseProps {
 const AvatarBase = ({ photoUrl = null }: AvatarBaseProps) => {
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      <SvgXml xml={PLANE_XML} width="100%" height="100%" preserveAspectRatio="none" />
+      <SvgXml xml={photoUrl ? PLANE_XML_PHOTO : PLANE_XML_EMPTY} width="100%" height="100%" preserveAspectRatio="none" />
       {!!photoUrl && (
         <View
           style={[

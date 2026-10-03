@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { MotiView } from 'moti';
 import { Ionicons } from '@expo/vector-icons';
+import CurrencyIcon from './CurrencyIcon';
 import { calculateZMoneyCost, isValidZMoneyAmount } from '../utils/zmoney';
 import useTopZIndex from '../hooks/useTopZIndex';
 import useBackButtonHandler from '../hooks/useBackButtonHandler';
@@ -84,8 +85,8 @@ const TipModal = ({ show, target, myBalance, onSend, onClose }: TipModalProps) =
         >
           <View style={styles.headerRow}>
             <View style={styles.titleRow}>
-              <Text style={styles.title}>Tip {target.username || 'user'} ko ⓩ</Text>
-              <Ionicons name="cash-outline" size={14} color="#ffffff" />
+              <Text style={styles.title}>Tip {target.username || 'user'} ko</Text>
+              <CurrencyIcon type="zmoney" size={14} />
             </View>
             <Pressable onPress={onClose} hitSlop={10} accessibilityLabel="Close">
               <Ionicons name="close" size={16} color="#9ca3af" />

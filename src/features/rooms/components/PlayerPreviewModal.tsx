@@ -1,6 +1,7 @@
 import React, { memo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import CurrencyIcon from '../../../shared/components/CurrencyIcon';
 import AvatarLayers from '../../avatar/components/AvatarLayers';
 import RankBadge from '../../../shared/components/RankBadge';
 import VerifiedBadge from '../../../shared/components/VerifiedBadge';
@@ -116,7 +117,7 @@ const PlayerPreviewModal = ({
 
             {onTip && (
               <Pressable onPress={() => onTip(member)} style={styles.tipBtn}>
-                <Ionicons name="cash-outline" size={16} color="#ffffff" />
+                <CurrencyIcon type="zmoney" size={16} />
                 <Text style={styles.tipBtnText}>Tip</Text>
               </Pressable>
             )}

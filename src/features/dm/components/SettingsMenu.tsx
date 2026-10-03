@@ -16,6 +16,7 @@ import { SlideInRight } from '../../../shared/components/motion/ScreenTransition
 import LegalDocModal from '../../legal/components/LegalDocModal';
 import { PRIVACY_POLICY_SECTIONS, PRIVACY_LAST_UPDATED } from '../../legal/content/privacyPolicyText';
 import { TERMS_OF_SERVICE_SECTIONS, TERMS_LAST_UPDATED } from '../../legal/content/termsOfServiceText';
+import { ZMONEY_SYMBOL } from '../../../shared/constants/currency';
 
 // Change Username FREE hai (backend mein bhi 0) - yahan sirf display ke liye.
 const USERNAME_CHANGE_COST = 0;
@@ -301,7 +302,7 @@ const SettingsMenu = ({ show, onClose, balance, onBalanceUpdate, currentUsername
             <View style={[styles.costBox, cantAfford ? styles.costBoxBad : styles.costBoxOk]}>
               <Text style={styles.costLabel}>THIS WILL COST</Text>
               <Text style={styles.costValue}>Free</Text>
-              <Text style={styles.costSub}>Current balance: ⓩ {zMoney.toLocaleString()}</Text>
+              <Text style={styles.costSub}>Current balance: {ZMONEY_SYMBOL} {zMoney.toLocaleString()}</Text>
             </View>
 
             {!!currentUsername && (

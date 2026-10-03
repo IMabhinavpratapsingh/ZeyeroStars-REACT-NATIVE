@@ -12,6 +12,8 @@ import axios from 'axios';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import CurrencyIcon from '../../../shared/components/CurrencyIcon';
+import { requestOpenStore } from '../../../shared/utils/storeOpenBus';
 import { API_BASE } from '../../../shared/config/config';
 import { getToken } from '../../../shared/services/NetworkManager';
 import { getMyIdAsync } from '../../../shared/utils/auth';
@@ -208,15 +210,44 @@ const ShopModal = ({ show, onClose, balance = DEFAULT_BALANCE, onBalanceUpdate }
 
   const loading = catalogLoading || invLoading;
 
+  // Floating "Limited" button: ON hone par sirf ABHI ACTIVE limited items
+  // dikhte hain (is_limited && is_limited_active). OFF = normal shop.
+  const [limitedOnly, setLimitedOnly] = useState(false);
+
+  // Har baar shop khulne par naya random order (upar naye-naye items aayein).
+  // Random key har item ko ek baar milti hai aur shop band hone tak wahi
+  // rehti hai - isliye catalog background mein refresh ho ya tab badlo,
+  // items idhar-udhar kood nahi karte.
+  const randomKeysRef = useRef<Record<string, number>>({});
+  const [shuffleTick, setShuffleTick] = useState(0);
+  useEffect(() => {
+    if (!show) return;
+    randomKeysRef.current = {};
+    setShuffleTick((t) => t + 1);
+    setLimitedOnly(false);
+    setActiveTab(ALL_TAB);
+  }, [show]);
+
   // is_default wali items sabko free milti hain (signup ke time hi) - shop
-  // me nahi dikhani, warna log baar baar khareedne ki koshish karenge.
-  const items = useMemo(
-    () =>
-      Object.values(itemsById).filter(
-        (item: any) => !item.is_default && (activeTab === ALL_TAB || item.item_category === activeTab)
-      ),
-    [itemsById, activeTab]
-  );
+  // me nahi dikhani. Expire ho chuke limited items (is_limited_active=false)
+  // bhi shop se gayab - backend /shop/items ka bhi yahi rule hai.
+  const items = useMemo(() => {
+    const keys = randomKeysRef.current;
+    const keyOf = (id: string | number) => {
+      const k = String(id);
+      if (keys[k] === undefined) keys[k] = Math.random();
+      return keys[k];
+    };
+    return Object.values(itemsById)
+      .filter((item: any) => {
+        if (item.is_default) return false;
+        if (item.is_limited && !item.is_limited_active) return false;
+        if (limitedOnly) return !!item.is_limited;
+        return activeTab === ALL_TAB || item.item_category === activeTab;
+      })
+      .sort((a: any, b: any) => keyOf(a.items_id) - keyOf(b.items_id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemsById, activeTab, limitedOnly, shuffleTick]);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -278,12 +309,19 @@ const ShopModal = ({ show, onClose, balance = DEFAULT_BALANCE, onBalanceUpdate }
           <Text style={styles.headerTitle}>Shop</Text>
         </View>
         <View style={styles.balanceRow}>
-          <Ionicons name="cash-outline" size={14} color="#ffffff" />
+          <CurrencyIcon type="coin" size={14} />
           <Text style={styles.balanceText}>{balance.coins}</Text>
           <Text style={styles.balanceText}>|</Text>
-          <Text style={styles.balanceText}>ⓩ</Text>
-          <Ionicons name="cash-outline" size={15} color="#ffffff" />
+          <CurrencyIcon type="zmoney" size={15} />
           <Text style={styles.balanceText}>{balance.z_money}</Text>
+          <Pressable
+            onPress={() => requestOpenStore('zmoney')}
+            hitSlop={8}
+            accessibilityLabel="Buy Z Money"
+            style={styles.plusBtn}
+          >
+            <Ionicons name="add" size={14} color="#ffffff" />
+          </Pressable>
         </View>
       </View>
 
@@ -295,11 +333,14 @@ const ShopModal = ({ show, onClose, balance = DEFAULT_BALANCE, onBalanceUpdate }
         contentContainerStyle={styles.tabsContent}
       >
         {TABS.map((tab) => {
-          const active = activeTab === tab;
+          const active = !limitedOnly && activeTab === tab;
           return (
             <Pressable
               key={tab}
-              onPress={() => setActiveTab(tab)}
+              onPress={() => {
+                setLimitedOnly(false);
+                setActiveTab(tab);
+              }}
               style={[styles.tab, active ? styles.tabActive : styles.tabIdle]}
             >
               <Text style={[styles.tabText, { color: active ? '#ffffff' : '#9a9a9a' }]}>
@@ -315,7 +356,9 @@ const ShopModal = ({ show, onClose, balance = DEFAULT_BALANCE, onBalanceUpdate }
         {loading ? (
           <Text style={styles.emptyText}>Loading...</Text>
         ) : items.length === 0 ? (
-          <Text style={styles.emptyText}>No items in this category yet.</Text>
+          <Text style={styles.emptyText}>
+            {limitedOnly ? 'No limited items active right now.' : 'No items in this category yet.'}
+          </Text>
         ) : (
           <View style={styles.grid}>
             {items.map((item: any) => {
@@ -371,14 +414,13 @@ const ShopModal = ({ show, onClose, balance = DEFAULT_BALANCE, onBalanceUpdate }
                   <View style={styles.priceRow}>
                     {coinPrice > 0 && (
                       <View style={styles.priceChip}>
-                        <Ionicons name="cash-outline" size={12} color="#ffffff" />
+                        <CurrencyIcon type="coin" size={12} />
                         <Text style={styles.priceText}>{coinPrice}</Text>
                       </View>
                     )}
                     {zMoneyPrice > 0 && (
                       <View style={styles.priceChip}>
-                        <Text style={styles.priceText}>ⓩ</Text>
-                        <Ionicons name="cash-outline" size={11} color="#ffffff" />
+                        <CurrencyIcon type="zmoney" size={11} />
                         <Text style={styles.priceText}>{zMoneyPrice}</Text>
                       </View>
                     )}
@@ -446,6 +488,20 @@ const ShopModal = ({ show, onClose, balance = DEFAULT_BALANCE, onBalanceUpdate }
         )}
       </ScrollView>
 
+      {/* Floating "Limited" button - Home ke "+" FAB jaisa. Tap = sirf active
+          limited items, dobara tap = wapas normal shop. */}
+      <Pressable
+        onPress={() => setLimitedOnly((v) => !v)}
+        accessibilityLabel={limitedOnly ? 'Show all shop items' : 'Show limited items'}
+        style={({ pressed }) => [
+          styles.limitedFab,
+          limitedOnly && styles.limitedFabOn,
+          pressed && { opacity: 0.85, transform: [{ scale: 0.96 }] },
+        ]}
+      >
+        <Ionicons name={limitedOnly ? 'close' : 'timer-outline'} size={limitedOnly ? 26 : 24} color="#ffffff" />
+      </Pressable>
+
       {/* Toast */}
       {!!toast && (
         <View style={[styles.toastWrap, { top: insets.top + 64 }]} pointerEvents="none">
@@ -512,8 +568,34 @@ const styles = StyleSheet.create({
   headerBtnText: { color: '#ffffff', fontSize: 14 },
   headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   headerTitle: { color: '#ffffff', fontWeight: '700', fontSize: 18 },
+  limitedFab: {
+    position: 'absolute',
+    right: 16,
+    bottom: 16,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#4f46e5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 12,
+  },
+  limitedFabOn: { backgroundColor: '#a16207' },
   balanceRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   balanceText: { color: '#ffffff', fontWeight: '700', fontSize: 13 },
+  plusBtn: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    marginLeft: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#22c55e',
+  },
   tabsScroll: {
     flexGrow: 0,
     flexShrink: 0,
@@ -525,7 +607,7 @@ const styles = StyleSheet.create({
   tabActive: { backgroundColor: '#e0883a' }, // star-primary-600
   tabIdle: { backgroundColor: '#161616' },
   tabText: { fontSize: 14, fontWeight: '700' },
-  gridContent: { padding: GRID_PADDING, paddingBottom: 32 },
+  gridContent: { padding: GRID_PADDING, paddingBottom: 92 },
   emptyText: { color: '#6e6e6e', textAlign: 'center', marginTop: 24 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: GRID_GAP },
   card: {

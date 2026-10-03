@@ -2,6 +2,7 @@ import React, { memo, useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MotiView } from 'moti';
 import { Ionicons } from '@expo/vector-icons';
+import CurrencyIcon from './CurrencyIcon';
 import useRewards from '../hooks/useRewards';
 import useTopZIndex from '../hooks/useTopZIndex';
 import useBackButtonHandler from '../hooks/useBackButtonHandler';
@@ -120,7 +121,7 @@ const DailyRewardPopup = ({
                     <Tile key={entry.day_number} style={[styles.tile, tone]}>
                       <Text style={[styles.dayText, { color: textColor }]}>Day {entry.day_number}</Text>
                       <View style={styles.coinRow}>
-                        <Ionicons name="cash-outline" size={12} color={textColor} />
+                        <CurrencyIcon type="coin" size={12} />
                         <Text style={[styles.coinText, { color: textColor }]}>{entry.coin_reward}</Text>
                       </View>
                       {isPast && <Ionicons name="checkmark" size={12} color={textColor} style={{ marginTop: 2 }} />}

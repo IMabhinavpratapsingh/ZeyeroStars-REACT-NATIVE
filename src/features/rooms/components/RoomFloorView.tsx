@@ -10,6 +10,7 @@ import React, {
 } from 'react';
 import { LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import CurrencyIcon from '../../../shared/components/CurrencyIcon';
 import axios from 'axios';
 import { Image } from 'expo-image';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -85,6 +86,9 @@ const ROOM_CARD_HEIGHT_PX = 150;
 const AVATAR_CARD_WIDTH_PX = ROOM_CARD_HEIGHT_PX * AVATAR_ASPECT_RATIO_NUM;
 const AVATAR_HEAD_TOP_FRACTION = 0.3;
 const AVATAR_FEET_DOWN_SHIFT_PX = 8;
+// Bubble ka bottom card ke top se itna (fraction) neeche. Chhota number = bubble aur upar.
+// (Photo circle ka top ~0.27 par hai, isliye 0.2 => circle ke thoda upar.)
+const BUBBLE_ANCHOR_TOP_FRACTION = 0.2;
 
 const CAMERA_FOLLOW_MS = 220;
 
@@ -180,7 +184,7 @@ function FlyingTip({
 
   return (
     <Animated.View style={[styles.flyLayer, style]} pointerEvents="none">
-      <Ionicons name="cash-outline" size={22} color="#fbbf24" />
+      <CurrencyIcon type="zmoney" size={22} />
       <Text style={styles.flyTipText}>+{amount}</Text>
     </Animated.View>
   );
@@ -801,7 +805,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: `${(1 - AVATAR_HEAD_TOP_FRACTION) * 100}%`,
+    bottom: `${(1 - BUBBLE_ANCHOR_TOP_FRACTION) * 100}%`,
     marginBottom: -4,
     alignItems: 'center',
     gap: 4,

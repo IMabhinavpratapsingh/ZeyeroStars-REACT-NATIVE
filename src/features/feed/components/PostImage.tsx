@@ -22,13 +22,16 @@ import { Ionicons } from '@expo/vector-icons';
  */
 const MIN_H = 120;
 const FALLBACK_RATIO = 1; // load hone se pehle square placeholder
+// Ratio module-level cache: list recycle/remount par image dobara load hone se
+// pehle hi sahi height milti hai -> layout jump nahi, scroll smooth.
+const ratioCache = new Map<string, number>();
 
 type Props = { uri: string; zoomable?: boolean };
 
 export default function PostImage({ uri, zoomable = false }: Props) {
   const { width: winW, height: winH } = useWindowDimensions();
   const [boxW, setBoxW] = useState(0);
-  const [ratio, setRatio] = useState<number | null>(null); // width / height
+  const [ratio, setRatio] = useState<number | null>(ratioCache.get(uri) ?? null); // width / height
   const [viewer, setViewer] = useState(false);
 
   const maxH = Math.min(winH * 0.6, (boxW || winW) * 1.25);
@@ -38,16 +41,27 @@ export default function PostImage({ uri, zoomable = false }: Props) {
 
   const body = (
     <View style={[styles.box, { height: boxH }]} onLayout={(e) => setBoxW(e.nativeEvent.layout.width)}>
-      <Image source={{ uri }} style={StyleSheet.absoluteFill} contentFit="cover" blurRadius={40} />
-      <View style={[StyleSheet.absoluteFill, styles.dim]} />
+      {/* Blur backdrop sirf tab jab box se image match nahi karti (lambi photo) -
+          blurRadius Android par bahut heavy hai, har post par lagana scroll lag karta tha. */}
+      {isClamped && (
+        <>
+          <Image source={{ uri }} style={StyleSheet.absoluteFill} contentFit="cover" blurRadius={25} cachePolicy="memory-disk" />
+          <View style={[StyleSheet.absoluteFill, styles.dim]} />
+        </>
+      )}
       <Image
         source={{ uri }}
         style={StyleSheet.absoluteFill}
-        contentFit="contain"
-        transition={120}
+        contentFit={isClamped ? 'contain' : 'cover'}
+        cachePolicy="memory-disk"
+        recyclingKey={uri}
         onLoad={(e) => {
           const { width, height } = e.source;
-          if (width && height) setRatio(width / height);
+          if (width && height) {
+            const r = width / height;
+            ratioCache.set(uri, r);
+            setRatio((prev) => (prev === r ? prev : r));
+          }
         }}
       />
       {isClamped && (

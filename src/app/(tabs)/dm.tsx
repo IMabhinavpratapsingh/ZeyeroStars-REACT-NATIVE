@@ -105,6 +105,7 @@ export default function DMScreen() {
           loadingMore={dm.dmLoadingMore}
           onLoadMore={dm.loadMoreDMHistory}
           onSend={dm.sendMessage}
+          onSendPhoto={dm.sendPhoto}
           isOtherTyping={dm.dmOtherTyping}
           requestLock={(dm.dmRequestLocks as any)[String(dm.selectedDM.id ?? dm.selectedDM.target_id)] ?? null}
           onAcceptRequest={() => dm.acceptMessageRequest((dm.selectedDM!.id ?? dm.selectedDM!.target_id) as any)}
@@ -113,6 +114,7 @@ export default function DMScreen() {
           getMyId={getMyId}
           onDeleteMessage={dm.deleteDMMessage}
           onEditMessage={dm.editDMMessage}
+          onRetryMessage={dm.retryMessage}
           onTip={() => showAlert('Tipping in chat is coming soon.', 'info')}
           onOpenProfile={(u) => requestOpenProfile(u)}
         />

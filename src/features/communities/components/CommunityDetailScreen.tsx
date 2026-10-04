@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useState } from 'react';
+import React, { memo, useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -70,7 +70,7 @@ const CommunityDetailScreen = ({
     }
   };
 
-  const loadFeed = async () => {
+  const loadFeed = useCallback(async () => {
     setLoading(true);
     try {
       const res = await getCommunityFeed(communityId, 0, PAGE_SIZE);
@@ -82,7 +82,7 @@ const CommunityDetailScreen = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [communityId]);
 
   useEffect(() => {
     if (!show || !communityId) return;
@@ -101,7 +101,7 @@ const CommunityDetailScreen = ({
     setPosts((prev) => prev.filter((p) => String(p.id) !== String(deletedPost.id)));
   }, [deletedPost]);
 
-  const loadMore = async () => {
+  const loadMore = useCallback(async () => {
     if (loadingMore || loading || !hasMore) return;
     setLoadingMore(true);
     try {
@@ -115,22 +115,29 @@ const CommunityDetailScreen = ({
     } finally {
       setLoadingMore(false);
     }
-  };
+  }, [communityId, offset, loadingMore, loading, hasMore]);
 
-  const handleToggleLike = async (postId: string | number) => {
+  // useCallback: stable reference, warna har render par saare PostCards re-render hote the (lag).
+  // Field `likes_count` hai (pehle galat `like_count` tha - count update nahi hota tha).
+  const handleToggleLike = useCallback(async (postId: string | number) => {
     setPosts((prev) =>
       prev.map((p) =>
         String(p.id) === String(postId)
-          ? { ...p, liked_by_me: !p.liked_by_me, like_count: (p.like_count || 0) + (p.liked_by_me ? -1 : 1) }
+          ? { ...p, liked_by_me: !p.liked_by_me, likes_count: (p.likes_count || 0) + (p.liked_by_me ? -1 : 1) }
           : p
       )
     );
     try {
-      await togglePostLike(postId);
+      const res = await togglePostLike(postId);
+      setPosts((prev) =>
+        prev.map((p) =>
+          String(p.id) === String(postId) ? { ...p, liked_by_me: !!res.data.liked, likes_count: res.data.likes } : p
+        )
+      );
     } catch (err: any) {
       console.error('Toggle like error:', err.response?.data || err.message);
     }
-  };
+  }, []);
 
   // Membership/role GET /communities/{id} mein nahi aata - cheapest signal
   // members list scan karke milta hai (Join/Leave + New Post button gate
@@ -253,6 +260,7 @@ const CommunityDetailScreen = ({
           onLoadMore={loadMore}
           onToggleLike={handleToggleLike}
           showCommunityChip={false}
+          adEvery={4}
         />
       </SlideInRight>
 

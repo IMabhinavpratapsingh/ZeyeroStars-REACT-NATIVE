@@ -37,6 +37,8 @@ export function setCachedMessages(targetId: string | number, messages: CachedDMM
 export function appendCachedMessage(targetId: string | number, message: CachedDMMessage): void {
   const existing = cache.get(String(targetId));
   if (!existing) return; // is chat ka cache hi nahi hai abhi - agli baar poori fetch ho jayegi
+  // Same server id dobara aaye (duplicate delivery / do handler) to dobara mat jodo.
+  if (message.id != null && existing.messages.some((m) => m.id != null && String(m.id) === String(message.id))) return;
   cache.set(String(targetId), { ...existing, messages: [...existing.messages, message] });
 }
 

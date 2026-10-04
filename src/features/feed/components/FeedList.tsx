@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -320,8 +321,8 @@ interface FeedListProps extends PostCardCallbacks {
   // paddingHorizontal (16) ko cancel karke edge-to-edge lagta hai, kyunki
   // strip ka apna 16px padding hai. Loading/empty state mein bhi dikhta hai.
   listHeader?: ReactNode;
-  // Har itne posts ke baad ek native ad (0/undefined = ads band). Sirf main
-  // feed (Home/Feed tab) pass karta hai - community feed / hashtag search mein ads nahi.
+  // Har itne posts ke baad ek native ad (0/undefined = ads band). Home/Feed tab
+  // aur community feed pass karte hain; hashtag search mein ads nahi.
   adEvery?: number;
 }
 
@@ -420,6 +421,12 @@ export default function FeedList({
       ListHeaderComponent={headerNode}
       onEndReached={onLoadMore}
       onEndReachedThreshold={0.5}
+      // Scroll perf: kam items ek saath render, offscreen views detach (Android).
+      initialNumToRender={6}
+      maxToRenderPerBatch={6}
+      updateCellsBatchingPeriod={50}
+      windowSize={9}
+      removeClippedSubviews={Platform.OS === 'android'}
       ListFooterComponent={
         loadingMore ? <ActivityIndicator color="#ffffff" style={{ marginVertical: 16 }} /> : null
       }

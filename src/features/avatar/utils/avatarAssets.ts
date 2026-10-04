@@ -48,20 +48,20 @@ export const CATEGORY_LABELS: Record<AvatarCategory, string> = {
 // baaki placeholders comment mein hain.
 const REGISTRY: Record<AvatarCategory, Record<string, any>> = {
   back: {
-    '13': require('../../../assets/back/13.svg'),
-    '15': require('../../../assets/back/15.svg'),
-    '17': require('../../../assets/back/17.svg'),
-    '19': require('../../../assets/back/19.svg'),
-    '21': require('../../../assets/back/21.svg'),
-    '23': require('../../../assets/back/23.svg'),
-    '25': require('../../../assets/back/25.svg'),
-    '27': require('../../../assets/back/27.svg'),
+    
   },
   front: {
     // '1': require('../../../assets/front/1.svg'),
   },
   background: {
-    // '1': require('../../../assets/background/1.svg'),
+    '13': require('../../../assets/background/13.svg'),
+    '15': require('../../../assets/background/15.svg'),
+    '17': require('../../../assets/background/17.svg'),
+    '19': require('../../../assets/background/19.svg'),
+    '21': require('../../../assets/background/21.svg'),
+    '23': require('../../../assets/background/23.svg'),
+    '25': require('../../../assets/background/25.svg'),
+    '27': require('../../../assets/background/27.svg'),
   },
   frame: {
     '9': require('../../../assets/frame/9.svg'),

@@ -4,6 +4,7 @@ import {
   FlatList,
   Image,
   Keyboard,
+  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -12,6 +13,8 @@ import {
   View,
 } from 'react-native';
 import { MotiView } from 'moti';
+import { Image as ExpoImage } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import Animated, { useAnimatedKeyboard, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -134,6 +137,7 @@ interface DMMessageBubbleProps {
   onTip: () => void;
   onReply: () => void;
   onReport: () => void;
+  onRetry?: () => void;
   onOpenProfile?: () => void;
   onOpenCommunity?: (slug: string, name: string) => void;
   /** Agar yeh message kisi ka reply hai: quoted block (message ke upar) ka data. */
@@ -141,12 +145,14 @@ interface DMMessageBubbleProps {
 }
 
 const DMMessageBubble = memo(
-  ({ msg, mine, dateLabel, showAvatar, avatarUri, avatarLetter, onDelete, onEdit, onTip, onReply, onReport, onOpenProfile, onOpenCommunity, replyInfo }: DMMessageBubbleProps) => {
+  ({ msg, mine, dateLabel, showAvatar, avatarUri, avatarLetter, onDelete, onEdit, onTip, onReply, onReport, onRetry, onOpenProfile, onOpenCommunity, replyInfo }: DMMessageBubbleProps) => {
     const bubbleTime = formatBubbleTime(msg.created_at);
     const [editing, setEditing] = useState(false);
     const [editText, setEditText] = useState(msg.content);
     const [menuOpen, setMenuOpen] = useState(false);
     const [menuAnchor, setMenuAnchor] = useState<LongPressPosition | null>(null);
+    const [photoViewer, setPhotoViewer] = useState(false);
+    const isPhoto = !!msg.is_photo;
 
     const { pressableProps } = useLongPress(
       (pt) => {
@@ -230,7 +236,7 @@ const DMMessageBubble = memo(
                 ) : (
                   <Pressable
                     {...pressableProps}
-                    style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs]}
+                    style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs, isPhoto && styles.bubblePhoto]}
                   >
                     {/* Reply: jis message ka jawab hai woh bubble ke UPAR (Telegram/Instagram jaisa) */}
                     {!!replyInfo && (
@@ -247,16 +253,40 @@ const DMMessageBubble = memo(
                       </View>
                     )}
 
-                    <Text style={[styles.bubbleText, mine && styles.bubbleTextMine]}>
-                      {renderWithMentions(msg.content, null, onOpenCommunity)}
-                    </Text>
+                    {isPhoto && (
+                      <Pressable onPress={() => !msg.uploading && setPhotoViewer(true)} style={styles.photoWrap}>
+                        <ExpoImage
+                          source={{ uri: msg.is_photo }}
+                          style={styles.photoImg}
+                          contentFit="cover"
+                          transition={120}
+                          cachePolicy="memory-disk"
+                        />
+                        {!!msg.uploading && (
+                          <View style={styles.photoOverlay}>
+                            <ActivityIndicator color="#ffffff" />
+                          </View>
+                        )}
+                      </Pressable>
+                    )}
+
+                    {!!msg.content && (
+                      <Text style={[styles.bubbleText, mine && styles.bubbleTextMine]}>
+                        {renderWithMentions(msg.content, null, onOpenCommunity)}
+                      </Text>
+                    )}
 
                     {/* Time + status bubble ke ANDAR, neeche-right (Telegram/WhatsApp jaisa) */}
-                    <View style={styles.metaRow}>
+                    <View style={[styles.metaRow, isPhoto && styles.metaRowPhoto]}>
                       {msg.edited && <Text style={[styles.metaText, mine && styles.metaTextMine]}>edited</Text>}
                       {!!bubbleTime && <Text style={[styles.metaText, mine && styles.metaTextMine]}>{bubbleTime}</Text>}
                       {mine &&
-                        (!msg.id ? (
+                        (msg.failed ? (
+                          <Pressable onPress={onRetry} hitSlop={8} style={styles.failedRow}>
+                            <Text style={styles.failedText}>Not sent · tap to retry</Text>
+                            <Ionicons name="alert-circle" size={14} color="#dc2626" />
+                          </Pressable>
+                        ) : !msg.id ? (
                           <Ionicons name="time-outline" size={12} color="#6b7280" />
                         ) : msg.seen ? (
                           <Ionicons name="checkmark-done-outline" size={14} color="#2563eb" />
@@ -276,7 +306,7 @@ const DMMessageBubble = memo(
                   mine
                     ? [
                         { label: 'Reply', icon: <Ionicons name="arrow-undo-outline" size={16} color="#ffffff" />, onClick: onReply },
-                        { label: 'Edit', icon: <Ionicons name="pencil-outline" size={16} color="#ffffff" />, onClick: startEdit },
+                        ...(isPhoto ? [] : [{ label: 'Edit', icon: <Ionicons name="pencil-outline" size={16} color="#ffffff" />, onClick: startEdit }]),
                         { label: 'Delete', icon: <Ionicons name="trash-outline" size={16} color="#f87171" />, danger: true, onClick: onDelete },
                       ]
                     : [
@@ -286,6 +316,17 @@ const DMMessageBubble = memo(
                       ]
                 }
               />
+
+              {isPhoto && (
+                <Modal visible={photoViewer} transparent animationType="fade" onRequestClose={() => setPhotoViewer(false)} statusBarTranslucent>
+                  <Pressable style={styles.viewerBg} onPress={() => setPhotoViewer(false)}>
+                    <ExpoImage source={{ uri: msg.is_photo }} style={styles.viewerImg} contentFit="contain" />
+                    <Pressable style={styles.viewerClose} onPress={() => setPhotoViewer(false)} hitSlop={12}>
+                      <Ionicons name="close" size={24} color="#ffffff" />
+                    </Pressable>
+                  </Pressable>
+                </Modal>
+              )}
             </SwipeableBubble>
           </View>
         </View>
@@ -303,11 +344,13 @@ interface DMChatWindowProps {
   loadingMore?: boolean;
   onLoadMore?: () => void;
   onSend: (text: string, replyingTo?: string | number | null) => void;
+  onSendPhoto?: (uri: string, replyingTo?: string | number | null) => void;
   isOtherTyping?: boolean;
   onClose: () => void;
   getMyId: () => string | number | null;
   onDeleteMessage: (id: string | number) => void;
   onEditMessage: (id: string | number, content: string) => void;
+  onRetryMessage?: (msg: any) => void;
   onOpenProfile?: (user: { id: string | number; username?: string }) => void;
   onTip: (target: { id: string | number; username?: string }, extra: any) => void;
   onOpenCommunity?: (slug: string, name: string) => void;
@@ -333,11 +376,13 @@ const DMChatWindow = ({
   loadingMore,
   onLoadMore,
   onSend,
+  onSendPhoto,
   isOtherTyping,
   onClose,
   getMyId,
   onDeleteMessage,
   onEditMessage,
+  onRetryMessage,
   onOpenProfile,
   onTip,
   onOpenCommunity,
@@ -472,8 +517,13 @@ const DMChatWindow = ({
     }, 2000);
   };
 
+  const lastSendRef = useRef({ text: '', at: 0 });
   const handleSend = () => {
     if (!msgInput.trim()) return;
+    // Tez double/multi tap: setMsgInput('') async hai, isliye ek hi text kai baar bhej deta tha.
+    const now = Date.now();
+    if (lastSendRef.current.text === msgInput && now - lastSendRef.current.at < 800) return;
+    lastSendRef.current = { text: msgInput, at: now };
     if (dmTypingTimeoutRef.current) {
       clearTimeout(dmTypingTimeoutRef.current);
       dmTypingTimeoutRef.current = null;
@@ -532,11 +582,44 @@ const DMChatWindow = ({
 
   const comingSoon = (what: string) => showActionToast(`${what} is coming soon.`);
 
+  // Attachments: + button -> sheet (Gallery / Camera) -> photo DM mein jaati hai.
+  const [attachOpen, setAttachOpen] = useState(false);
+  const sendPickedPhoto = (uri?: string | null) => {
+    if (!uri) return;
+    onSendPhoto?.(uri, replyTarget?.id ?? null);
+    setReplyTarget(null);
+  };
+  const pickFromGallery = async () => {
+    setAttachOpen(false);
+    try {
+      const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: false, quality: 1 });
+      if (picked.canceled) return;
+      sendPickedPhoto(picked.assets?.[0]?.uri);
+    } catch (err: any) {
+      console.error('DM photo pick error:', err?.message);
+    }
+  };
+  const pickFromCamera = async () => {
+    setAttachOpen(false);
+    try {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!perm.granted) {
+        showActionToast('Camera permission is needed to take a photo.');
+        return;
+      }
+      const shot = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 });
+      if (shot.canceled) return;
+      sendPickedPhoto(shot.assets?.[0]?.uri);
+    } catch (err: any) {
+      console.error('DM camera error:', err?.message);
+    }
+  };
+
   // Reply: message ki id (replying_to) bhejte hain - input mein @naam nahi jodte.
   // Abhi tak server ack nahi aaya (id nahi) to reply nahi ho sakta.
   const handleReply = useCallback((msg: any, name: string) => {
     if (!msg?.id) return;
-    setReplyTarget({ id: msg.id, name, content: msg.content });
+    setReplyTarget({ id: msg.id, name, content: msg.is_photo ? '📷 Photo' : msg.content });
     inputRef.current?.focus();
   }, []);
 
@@ -561,6 +644,24 @@ const DMChatWindow = ({
     if (!lastMsgKey) return;
     requestAnimationFrame(() => listRef.current?.scrollToOffset({ offset: 0, animated: true }));
   }, [lastMsgKey]);
+
+  // Purane messages ka asli trigger: scroll position. FlatList ka onEndReached ek
+  // content-length par SIRF EK baar fire hota hai - agar wo pehli baar (user ke
+  // scroll karne se pehle) fire ho gaya to guard ne use rok diya aur baad mein upar
+  // scroll karne par dobara kabhi nahi chalta tha (purane DMs load nahi hote the).
+  // Isliye upar ke ~400px ke andar pahunchte hi yahin se load karte hain.
+  const loadMoreLockRef = useRef(false);
+  useEffect(() => {
+    if (!loadingMore) loadMoreLockRef.current = false;
+  }, [loadingMore]);
+  const handleScroll = (e: any) => {
+    if (!hasMoreMessages || loadingMore || loadMoreLockRef.current) return;
+    const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
+    if (contentOffset.y + layoutMeasurement.height >= contentSize.height - 400) {
+      loadMoreLockRef.current = true;
+      onLoadMore?.();
+    }
+  };
 
   const handleEndReached = () => {
     if (!hasMoreMessages || loadingMore) return;
@@ -619,7 +720,7 @@ const DMChatWindow = ({
       replyInfo = original
         ? {
             name: String(original.sender_id) === String(getMyId()) ? 'You' : selectedDM.username || 'User',
-            text: original.content,
+            text: original.is_photo ? '📷 Photo' : original.content,
             missing: false,
           }
         : { name: 'Reply', text: 'Original message', missing: true };
@@ -639,6 +740,7 @@ const DMChatWindow = ({
         onReply={() => handleReply(msg, username)}
         replyInfo={replyInfo}
         onReport={() => setReportState({ mode: 'report_message', target: { id: msg.id, label: 'this message' } })}
+        onRetry={() => onRetryMessage?.(msg)}
         onOpenProfile={openPartnerProfile}
         onOpenCommunity={onOpenCommunity}
       />
@@ -758,6 +860,8 @@ const DMChatWindow = ({
             keyExtractor={msgKey}
             renderItem={renderItem}
             onEndReached={handleEndReached}
+            onScroll={handleScroll}
+            scrollEventThrottle={100}
             onScrollBeginDrag={() => {
               userScrolledRef.current = true;
             }}
@@ -851,8 +955,8 @@ const DMChatWindow = ({
             </View>
           ) : (
             <>
-              {/* + button - placeholder */}
-              <Pressable onPress={() => comingSoon('Attachments')} style={styles.plusBtn}>
+              {/* + button - attachments (photo) */}
+              <Pressable onPress={() => { Keyboard.dismiss(); setAttachOpen(true); }} style={styles.plusBtn}>
                 <Ionicons name="add" size={28} color="#d4d4d4" />
               </Pressable>
 
@@ -885,6 +989,26 @@ const DMChatWindow = ({
             </>
           )}
         </View>
+
+        <Modal visible={attachOpen} transparent animationType="fade" onRequestClose={() => setAttachOpen(false)} statusBarTranslucent>
+          <Pressable style={styles.sheetScrim} onPress={() => setAttachOpen(false)}>
+            <View style={styles.sheet}>
+              <View style={styles.sheetHandle} />
+              <Pressable onPress={pickFromGallery} style={styles.sheetRow}>
+                <View style={styles.sheetIcon}>
+                  <Ionicons name="image-outline" size={22} color="#ffffff" />
+                </View>
+                <Text style={styles.sheetLabel}>Photo from gallery</Text>
+              </Pressable>
+              <Pressable onPress={pickFromCamera} style={styles.sheetRow}>
+                <View style={styles.sheetIcon}>
+                  <Ionicons name="camera-outline" size={22} color="#ffffff" />
+                </View>
+                <Text style={styles.sheetLabel}>Take a photo</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Modal>
 
         {emojiOpen && (
           <EmojiPanel
@@ -962,6 +1086,8 @@ const styles = StyleSheet.create({
   sideAvatarText: { color: '#ffffff', fontWeight: '700', fontSize: 13 },
   metaRow: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-end', gap: 4, marginTop: 2 },
   metaText: { fontSize: 11, color: '#9a9a9a' },
+  failedRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  failedText: { fontSize: 11, color: '#dc2626', fontWeight: '600' },
   metaTextMine: { color: 'rgba(0,0,0,0.5)' },
   plusBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#161616', alignItems: 'center', justifyContent: 'center' },
   inputWrap: {
@@ -1047,6 +1173,20 @@ const styles = StyleSheet.create({
   quoteText: { color: 'rgba(255,255,255,0.75)', fontSize: 13, lineHeight: 17 },
   quoteTextMine: { color: 'rgba(0,0,0,0.7)' },
   quoteMissing: { fontStyle: 'italic', opacity: 0.7 },
+  bubblePhoto: { padding: 4, paddingBottom: 4 },
+  photoWrap: { borderRadius: 14, overflow: 'hidden', backgroundColor: '#1a1a1a' },
+  photoImg: { width: 230, height: 280 },
+  photoOverlay: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' },
+  metaRowPhoto: { paddingHorizontal: 6, paddingBottom: 2, marginTop: 4 },
+  viewerBg: { flex: 1, backgroundColor: '#000000', alignItems: 'center', justifyContent: 'center' },
+  viewerImg: { width: '100%', height: '100%' },
+  viewerClose: { position: 'absolute', top: 44, right: 16, backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 20, padding: 8 },
+  sheetScrim: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
+  sheet: { backgroundColor: '#161616', borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 28, gap: 6 },
+  sheetHandle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: '#3a3a3a', marginBottom: 8 },
+  sheetRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 12 },
+  sheetIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#262626', alignItems: 'center', justifyContent: 'center' },
+  sheetLabel: { color: '#ffffff', fontSize: 15, fontWeight: '600' },
   replyBar: {
     flexDirection: 'row',
     alignItems: 'center',

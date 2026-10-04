@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
 import networkManager from '../../../shared/services/NetworkManager';
+import { useRadioMuted } from '../services/radioMute';
 
 // Room ka radio Dashboard ke root mein hamesha mounted rehta hai - room
 // ki chat screen minimize ho to bhi yeh component unmount nahi hota,
@@ -31,6 +32,14 @@ const RoomRadioPlayer = ({ radioUrl }: RoomRadioPlayerProps) => {
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryCountRef = useRef(0);
   const [canPlay, setCanPlay] = useState<boolean>(computeCanPlay);
+  const radioMuted = useRadioMuted();
+
+  // Mute: stream chalti rehti hai (unmute par turant awaaz), bas volume band.
+  useEffect(() => {
+    try {
+      player.muted = radioMuted;
+    } catch {}
+  }, [radioMuted, player, radioUrl]);
 
   useEffect(() => {
     // Background mein radio nahi bajna chahiye (user ki requirement) -

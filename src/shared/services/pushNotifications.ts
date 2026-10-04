@@ -80,18 +80,29 @@ function dispatchTap(data: PushTapData) {
   else pendingTap = data;
 }
 
+// Login.tsx + root _layout dono setupPushNotifications() chalate hain (aur token listener
+// bhi fire hota hai) - isliye ek hi (authToken, deviceToken) jodi backend ko sirf EK baar bhejo.
+let lastRegisteredKey: string | null = null;
+let inFlightKey: string | null = null;
+
 async function registerTokenWithBackend(deviceToken: string) {
   const authToken = getToken();
   if (!authToken) return; // login ke baad hi call hona chahiye
+  const key = `${authToken}:${deviceToken}`;
+  if (key === lastRegisteredKey || key === inFlightKey) return;
+  inFlightKey = key;
   try {
     await axios.post(
       `${API_BASE}/devices/register`,
       { token: deviceToken, platform: Platform.OS },
       { headers: { Authorization: `Bearer ${authToken}` } }
     );
+    lastRegisteredKey = key;
     console.log('[PUSH] token registered with backend:', deviceToken.slice(0, 16) + '...');
   } catch (e) {
     console.error('push token register failed', e);
+  } finally {
+    if (inFlightKey === key) inFlightKey = null;
   }
 }
 
@@ -112,14 +123,18 @@ export async function setupPushNotifications(): Promise<void> {
       await Notifications.setNotificationChannelAsync('game', {
         name: 'Game',
         importance: Notifications.AndroidImportance.MAX,
-        sound: 'default',
+        // NOTE: `sound: 'default'` mat do - expo-notifications ise CUSTOM file samajh ke
+        // "Custom sound 'default' not found" error deta hai. Sound na dene par channel
+        // system ki default notification sound use karta hai.
       });
       // Backend (push_service.py) channel_id="messages" bhejta hai - ye channel
       // na ho to Android 8+ par notification sahi importance/sound ke bina aata hai.
       await Notifications.setNotificationChannelAsync('messages', {
         name: 'Messages',
         importance: Notifications.AndroidImportance.MAX,
-        sound: 'default',
+        // NOTE: `sound: 'default'` mat do - expo-notifications ise CUSTOM file samajh ke
+        // "Custom sound 'default' not found" error deta hai. Sound na dene par channel
+        // system ki default notification sound use karta hai.
       });
     }
 

@@ -245,6 +245,11 @@ export default function DMOverlayScreen({ show, onClose, onOpenOverlay, myBalanc
     (text: string, replyingTo?: string | number | null) => dmRef.current.sendMessage(text, replyingTo),
     []
   );
+  const handleSendPhoto = useCallback(
+    (uri: string, replyingTo?: string | number | null) => dmRef.current.sendPhoto(uri, replyingTo),
+    []
+  );
+  const handleRetryMsg = useCallback((m: any) => dmRef.current.retryMessage(m), []);
   const handleDeleteMsg = useCallback((id: any) => dmRef.current.deleteDMMessage(id), []);
   const handleEditMsg = useCallback((id: any, c: string) => dmRef.current.editDMMessage(id, c), []);
   const handleTip = useCallback(() => showAlert('Tipping in chat is coming soon.', 'info'), []);
@@ -287,6 +292,7 @@ export default function DMOverlayScreen({ show, onClose, onOpenOverlay, myBalanc
             loadingMore={snap.loadingMore}
             onLoadMore={handleLoadMore}
             onSend={handleSend}
+            onSendPhoto={handleSendPhoto}
             isOtherTyping={snap.typing}
             requestLock={snap.requestLock}
             onAcceptRequest={handleChatAccept}
@@ -295,6 +301,7 @@ export default function DMOverlayScreen({ show, onClose, onOpenOverlay, myBalanc
             getMyId={getMyId}
             onDeleteMessage={handleDeleteMsg}
             onEditMessage={handleEditMsg}
+            onRetryMessage={handleRetryMsg}
             onTip={handleTip}
             activeTrade={trade.activeTrade}
             outgoingTradeWaiting={trade.outgoingTradeWaiting}

@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 import axios from 'axios';
 import { API_BASE } from '../../../shared/config/config';
 import networkManager, { getToken } from '../../../shared/services/NetworkManager';
 import { getMyId } from '../../../shared/utils/auth';
 import { showAlert } from '../../../shared/utils/alertBus';
 import { playMessageSent } from '../../../shared/services/soundService';
+import { compressImage, toUploadFormPart } from '../../../shared/utils/imageCompress';
 import { confirmAction } from '../../../shared/utils/confirmBus';
 import {
   getCachedMessages,
@@ -35,6 +37,16 @@ const normalizeDMHistoryMessage = (m: any): CachedDMMessage => ({
   isTip: !!m.is_tip,
   edited: !!m.is_edited,
 });
+
+// Photo message: content khaali, `is_photo` mein photo ka URL. Inbox/notification/
+// reply-preview mein text ki jagah yeh label dikhta hai.
+const PHOTO_PREVIEW = '📷 Photo';
+const isRemoteUrl = (u: any) => typeof u === 'string' && /^https?:\/\//i.test(u);
+
+// Server ack / blocked / request-pending event ko apne pending (id-less) bubble se
+// match karo: photo ho to URL se, warna text se.
+const matchesPending = (m: any, data: any) =>
+  !m.id && (data.is_photo ? m.is_photo === data.is_photo : !m.is_photo && m.content === data.content);
 
 export type DMUser = {
   id?: string | number;
@@ -131,6 +143,178 @@ export default function useDMState({
 
   const getTargetId = (u: DMUser | null) => u && (u.id ?? u.target_id);
 
+  // ---------------------------------------------------------------------
+  // DELIVERY GUARANTEE (pehla message "clock" par atak jaana). Socket chupchap mar
+  // sakta hai (readyState OPEN dikhta hai, lekin server tak kuch nahi jaata) - tab
+  // send() "success" return karta hai, message gum ho jaata hai aur bubble hamesha
+  // clock dikhata hai. Ab har bheja hua message ack ke liye track hota hai:
+  //   5s tak ack nahi -> socket ping-check (zombie ho to reconnect) -> history se
+  //   verify (server par pahunch gaya ho to bas id lagao, DOBARA mat bhejo) -> nahi
+  //   mila to resend (max 2 baar) -> phir bhi nahi to "Not sent - tap to retry".
+  // ---------------------------------------------------------------------
+  const selectedDMRef = useRef<DMUser | null>(selectedDM);
+  selectedDMRef.current = selectedDM;
+  const chatMessagesRef = useRef(chatMessages);
+  chatMessagesRef.current = chatMessages;
+
+  const patchPendingMessage = useCallback(
+    (targetId: string | number, cid: string, patch: Record<string, any>) => {
+      setChatMessages((prev) =>
+        prev.some((m: any) => m._cid === cid) ? prev.map((m: any) => (m._cid === cid ? { ...m, ...patch } : m)) : prev
+      );
+      const c = getCachedMessages(targetId);
+      if (c && c.messages.some((m: any) => m._cid === cid)) {
+        setCachedMessages(
+          targetId,
+          c.messages.map((m: any) => (m._cid === cid ? { ...m, ...patch } : m)),
+          c.hasMore
+        );
+      }
+    },
+    []
+  );
+
+  const listForTarget = (targetId: string | number): CachedDMMessage[] => {
+    const sel = selectedDMRef.current;
+    const isSel = !!sel && String(getTargetId(sel)) === String(targetId);
+    return isSel ? chatMessagesRef.current : getCachedMessages(targetId)?.messages || [];
+  };
+
+  const isStillPending = (targetId: string | number, cid: string) => {
+    const m: any = listForTarget(targetId).find((x: any) => x._cid === cid);
+    return !!m && !m.id && !m.failed;
+  };
+
+  const verifyDelivery = useCallback(
+    async (targetId: string | number, cid: string, content: string, replyingTo: string | number | null, attempt: number, photoUrl: string | null = null) => {
+      const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+      await sleep(5000);
+      if (!isStillPending(targetId, cid)) return;
+
+      const alive = await networkManager.ensureAlive();
+      if (!alive) {
+        await networkManager.waitForConnection(6000);
+        // Reconnect par queued message khud flush hota hai - uske ack ka thoda wait.
+        await sleep(2500);
+        if (!isStillPending(targetId, cid)) return;
+      }
+
+      let delivered = false;
+      let historyOk = false;
+      try {
+        const known = [...listForTarget(targetId)].reverse().find((m) => m.id)?.id;
+        const token = getToken();
+        const res = await axios.get(`${API_BASE}/ws/dm/history/${targetId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          params: known ? { after: known } : { limit: DM_INITIAL_SIZE },
+        });
+        historyOk = true;
+        const mine = (res.data.messages || [])
+          .map(normalizeDMHistoryMessage)
+          .find((m: any) =>
+            String(m.sender_id) === String(getMyId()) &&
+            (photoUrl ? m.is_photo === photoUrl : !m.is_photo && String(m.content).trim() === content.trim())
+          );
+        if (mine) {
+          delivered = true;
+          patchPendingMessage(targetId, cid, { id: mine.id, created_at: mine.created_at });
+        }
+      } catch {
+        // network issue - neeche retry/fail logic dekhega
+      }
+      if (delivered) return;
+      if (!isStillPending(targetId, cid)) return;
+
+      if (attempt >= 2) {
+        patchPendingMessage(targetId, cid, { failed: true });
+        return;
+      }
+      // History se confirm hua ki server par nahi pahuncha (ya history hi nahi mili) -
+      // sirf pehli surat mein resend; history fail ho to bas dobara check (dup se bachne ke liye).
+      if (historyOk) {
+        networkManager.send({
+          type: 'dm',
+          target_id: targetId,
+          ...(photoUrl ? { photo_url: photoUrl } : { message: content }),
+          ...(replyingTo ? { replying_to: replyingTo } : {}),
+        });
+      }
+      verifyDelivery(targetId, cid, content, replyingTo, attempt + 1, photoUrl);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [patchPendingMessage]
+  );
+
+  /** Photo: compress -> POST /ws/dm/upload-photo (dm-photos/ folder) -> ws "dm" with photo_url. */
+  const uploadAndSendPhoto = useCallback(
+    async (targetId: string | number, cid: string, localUri: string, replyingTo: string | number | null) => {
+      try {
+        const compressed = await compressImage(localUri, { maxDimension: 1280, quality: 0.8 });
+        const form = new FormData();
+        form.append('file', toUploadFormPart(compressed, 'dm-photo.jpg'));
+        const token = getToken();
+        const res = await axios.post(`${API_BASE}/ws/dm/upload-photo`, form, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        const url = res.data?.photo_url;
+        if (!url) throw new Error('No photo_url in response');
+
+        patchPendingMessage(targetId, cid, { is_photo: url, uploading: false });
+        networkManager.sendOrQueue({
+          type: 'dm',
+          target_id: targetId,
+          photo_url: url,
+          ...(replyingTo ? { replying_to: replyingTo } : {}),
+        });
+        verifyDelivery(targetId, cid, '', replyingTo, 0, url);
+      } catch (err: any) {
+        console.error('DM photo upload error:', err?.response?.data || err?.message);
+        patchPendingMessage(targetId, cid, { failed: true, uploading: false });
+        showAlert(err?.response?.data?.detail || "Couldn't send the photo, tap it to retry.");
+      }
+    },
+    [patchPendingMessage, verifyDelivery]
+  );
+
+  /** "Not sent" bubble par tap - dobara bhejo (pehle jaisa hi tracking ke saath). */
+  const retryMessage = useCallback(
+    (msg: any) => {
+      const sel = selectedDMRef.current;
+      if (!sel || !msg?._cid || msg.id) return;
+      const targetId = getTargetId(sel)!;
+
+      // Photo: upload hi nahi hua tha -> dobara upload+send; upload ho chuka tha -> sirf resend.
+      if (msg.is_photo) {
+        if (!isRemoteUrl(msg.is_photo)) {
+          if (!msg._localUri) return;
+          patchPendingMessage(targetId, msg._cid, { failed: false, uploading: true });
+          uploadAndSendPhoto(targetId, msg._cid, msg._localUri, msg.replying_to ?? null);
+          return;
+        }
+        patchPendingMessage(targetId, msg._cid, { failed: false });
+        networkManager.sendOrQueue({
+          type: 'dm',
+          target_id: targetId,
+          photo_url: msg.is_photo,
+          ...(msg.replying_to ? { replying_to: msg.replying_to } : {}),
+        });
+        verifyDelivery(targetId, msg._cid, '', msg.replying_to ?? null, 1, msg.is_photo);
+        return;
+      }
+
+      patchPendingMessage(targetId, msg._cid, { failed: false });
+      networkManager.sendOrQueue({
+        type: 'dm',
+        target_id: targetId,
+        message: msg.content,
+        ...(msg.replying_to ? { replying_to: msg.replying_to } : {}),
+      });
+      verifyDelivery(targetId, msg._cid, msg.content, msg.replying_to ?? null, 1);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [patchPendingMessage, verifyDelivery]
+  );
+
   const markDMSeenAndClearUnread = useCallback(
     (targetId: string | number) => {
       networkManager.send({ type: 'dm_seen', target_id: targetId });
@@ -197,8 +381,15 @@ export default function useDMState({
             });
             const missed = (res.data.messages || []).map(normalizeDMHistoryMessage);
             if (missed.length) {
-              setChatMessages((prev) => [...prev, ...missed]);
-              setCachedMessages(targetId, [...cached.messages, ...missed], cached.hasMore);
+              const have = new Set(cached.messages.map((m) => String(m.id)));
+              const fresh = missed.filter((m: any) => !have.has(String(m.id)));
+              if (fresh.length) {
+                setChatMessages((prev) => {
+                  const ids = new Set(prev.map((m) => String(m.id)));
+                  return [...prev, ...fresh.filter((m: any) => !ids.has(String(m.id)))];
+                });
+                setCachedMessages(targetId, [...cached.messages, ...fresh], cached.hasMore);
+              }
             }
           } catch (err: any) {
             console.error('DM catch-up fetch error:', err?.response?.data || err?.message);
@@ -387,7 +578,9 @@ export default function useDMState({
         inbox.requestsList.some((r: InboxRow) => String(r.target_id) === key);
 
       const sentAt = new Date().toISOString();
+      const cid = `c${Date.now()}${Math.random().toString(36).slice(2, 7)}`;
       const optimisticMsg: CachedDMMessage = {
+        _cid: cid,
         content: text,
         sender_id: getMyId() as any,
         created_at: sentAt,
@@ -417,6 +610,7 @@ export default function useDMState({
         message: text,
         ...(replyingTo ? { replying_to: replyingTo } : {}),
       });
+      verifyDelivery(targetId, cid, text, replyingTo ?? null, 0);
 
       inbox.upsertInboxRow(
         targetId,
@@ -432,7 +626,64 @@ export default function useDMState({
         }
       );
     },
-    [inbox, selectedDM, dmRequestLocks, acceptMessageRequest]
+    [inbox, selectedDM, dmRequestLocks, acceptMessageRequest, verifyDelivery]
+  );
+
+  const sendPhoto = useCallback(
+    async (localUri: string, replyingTo?: string | number | null) => {
+      if (!localUri || !selectedDM) return;
+      const targetId = getTargetId(selectedDM)!;
+      const key = String(targetId);
+
+      const isIncomingRequest =
+        autoAcceptRef.current.has(key) ||
+        dmRequestLocks[key] === 'pending_incoming' ||
+        inbox.requestsList.some((r: InboxRow) => String(r.target_id) === key);
+
+      const sentAt = new Date().toISOString();
+      const cid = `c${Date.now()}${Math.random().toString(36).slice(2, 7)}`;
+      // Bubble turant local photo ke saath (spinner overlay), upload background mein.
+      const optimisticMsg: CachedDMMessage = {
+        _cid: cid,
+        content: '',
+        is_photo: localUri,
+        _localUri: localUri,
+        uploading: true,
+        sender_id: getMyId() as any,
+        created_at: sentAt,
+        replying_to: replyingTo ?? null,
+      } as any;
+      setChatMessages((prev) => [...prev, optimisticMsg]);
+      appendCachedMessage(targetId, optimisticMsg);
+
+      if (isIncomingRequest) {
+        let pending = autoAcceptRef.current.get(key);
+        if (!pending) {
+          pending = acceptMessageRequest(targetId).finally(() => {
+            autoAcceptRef.current.delete(key);
+          });
+          autoAcceptRef.current.set(key, pending);
+        }
+        await pending;
+      }
+
+      inbox.upsertInboxRow(
+        targetId,
+        { last_message: PHOTO_PREVIEW, last_message_time: sentAt, last_message_mine: true },
+        {
+          target_id: targetId,
+          username: selectedDM.username,
+          is_verified: !!selectedDM.is_verified,
+          last_message: PHOTO_PREVIEW,
+          last_message_time: sentAt,
+          last_message_mine: true,
+          unread_count: 0,
+        }
+      );
+
+      uploadAndSendPhoto(targetId, cid, localUri, replyingTo ?? null);
+    },
+    [inbox, selectedDM, dmRequestLocks, acceptMessageRequest, uploadAndSendPhoto]
   );
 
   const declineMessageRequest = useCallback(
@@ -459,12 +710,7 @@ export default function useDMState({
   const deleteConversation = useCallback(
     async (targetId: string | number) => {
       const row = inbox.inboxList.find((d: InboxRow) => String(d.target_id) === String(targetId));
-      try {
-        const token = getToken();
-        await axios.delete(`${API_BASE}/ws/dm/conversation/${targetId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
+      const cleanupDeleted = () => {
         inbox.setInboxList((prev: InboxRow[]) => prev.filter((d) => String(d.target_id) !== String(targetId)));
         if (row?.unread_count) {
           inbox.setDmUnread((prev: any) => ({
@@ -479,7 +725,22 @@ export default function useDMState({
           setChatMessages([]);
           inbox.setShowInbox(true);
         }
+      };
+      try {
+        const token = getToken();
+        await axios.delete(`${API_BASE}/ws/dm/conversation/${targetId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        cleanupDeleted();
       } catch (err: any) {
+        const detail = String(err?.response?.data?.detail || '').toLowerCase();
+        if (err?.response?.status === 404 || detail.includes('not found')) {
+          // Server par conversation pehle hi nahi hai (dusri device/side se delete ho chuki)
+          // - error nahi, bas local list/cache saaf karo.
+          cleanupDeleted();
+          return;
+        }
         console.error('Delete conversation error:', err?.response?.data || err?.message);
         showAlert('Could not delete this chat, try again.');
       }
@@ -492,19 +753,38 @@ export default function useDMState({
   // object mein spread karega (dekho useInboxState.ts ka top-level note).
   // ---------------------------------------------------------------------
 
+  // Ek hi message (same id) dobara aaye (duplicate delivery / reconnect replay) to
+  // sirf ek baar process karo - warna bubble, unread count aur notification 4x ho jaate hain.
+  const handledDmIdsRef = useRef<Set<string>>(new Set());
+
   const handleDM = useCallback(
     (data: any) => {
+      const preview = data?.is_photo ? PHOTO_PREVIEW : data?.content;
+      if (data?.id != null) {
+        const k = String(data.id);
+        if (handledDmIdsRef.current.has(k)) return;
+        handledDmIdsRef.current.add(k);
+        if (handledDmIdsRef.current.size > 400) {
+          const first = handledDmIdsRef.current.values().next().value;
+          if (first !== undefined) handledDmIdsRef.current.delete(first);
+        }
+      }
       const dmId = selectedDM && getTargetId(selectedDM);
       if (selectedDM && String(data.sender_id) === String(dmId)) {
         const targetId = dmId!;
         const newMsg: CachedDMMessage = {
           id: data.id,
           content: data.content,
+          is_photo: data.is_photo ?? null,
           sender_id: data.sender_id,
           created_at: data.created_at,
           replying_to: data.replying_to ?? null,
         } as any;
-        setChatMessages((prev) => [...prev, newMsg]);
+        setChatMessages((prev) =>
+          newMsg.id != null && prev.some((m) => m.id != null && String(m.id) === String(newMsg.id))
+            ? prev
+            : [...prev, newMsg]
+        );
         appendCachedMessage(targetId, newMsg);
         setDmOtherTyping(false);
         setTypingFor(data.sender_id, false);
@@ -517,7 +797,7 @@ export default function useDMState({
             is_verified: !!selectedDM.is_verified,
             avatar_url: data.sender_avatar_url,
             avatar_version: data.sender_avatar_version,
-            last_message: data.content,
+            last_message: preview,
           });
         } else if (data.conversation_status === 'accepted') {
           setDmRequestLocks((prev) => (prev[String(targetId)] ? { ...prev, [String(targetId)]: null } : prev));
@@ -527,14 +807,14 @@ export default function useDMState({
 
         inbox.upsertInboxRow(
           data.sender_id,
-          { last_message: data.content, last_message_time: data.created_at, last_message_mine: false },
+          { last_message: preview, last_message_time: data.created_at, last_message_mine: false },
           {
             target_id: data.sender_id,
             username: selectedDM.username,
             is_verified: !!selectedDM.is_verified,
             avatar_url: data.sender_avatar_url,
             avatar_version: data.sender_avatar_version,
-            last_message: data.content,
+            last_message: preview,
             last_message_time: data.created_at,
             last_message_mine: false,
             unread_count: 0,
@@ -552,12 +832,12 @@ export default function useDMState({
             is_verified: false,
             avatar_url: data.sender_avatar_url,
             avatar_version: data.sender_avatar_version,
-            last_message: data.content,
+            last_message: preview,
           });
           if (!isInboxOpen()) {
             showNotification(
               { id: data.sender_id, username: senderName, avatar_url: data.sender_avatar_url, avatar_version: data.sender_avatar_version },
-              `Message request: ${data.content}`
+              `Message request: ${preview}`
             );
           }
           return;
@@ -566,7 +846,7 @@ export default function useDMState({
         if (!isInboxOpen()) {
           showNotification(
             { id: data.sender_id, username: senderName, avatar_url: data.sender_avatar_url, avatar_version: data.sender_avatar_version },
-            data.content
+            preview
           );
         }
 
@@ -581,7 +861,7 @@ export default function useDMState({
           (row: InboxRow) => ({
             ...row,
             unread_count: (row.unread_count || 0) + 1,
-            last_message: data.content,
+            last_message: preview,
             last_message_time: data.created_at,
             last_message_mine: false,
           }),
@@ -591,7 +871,7 @@ export default function useDMState({
             is_verified: false,
             avatar_url: data.sender_avatar_url,
             avatar_version: data.sender_avatar_version,
-            last_message: data.content,
+            last_message: preview,
             last_message_time: data.created_at,
             last_message_mine: false,
             unread_count: 1,
@@ -629,7 +909,7 @@ export default function useDMState({
 
   const handleDMBlocked = useCallback((data: any) => {
     setChatMessages((prev) => {
-      const idx = [...prev].reverse().findIndex((m) => !m.id && m.content === data.content);
+      const idx = [...prev].reverse().findIndex((m) => matchesPending(m, data));
       if (idx === -1) return prev;
       const realIdx = prev.length - 1 - idx;
       return prev.filter((_, i) => i !== realIdx);
@@ -640,7 +920,7 @@ export default function useDMState({
   const handleDMRequestPending = useCallback(
     (data: any) => {
       setChatMessages((prev) => {
-        const idx = [...prev].reverse().findIndex((m) => !m.id && m.content === data.content);
+        const idx = [...prev].reverse().findIndex((m) => matchesPending(m, data));
         if (idx === -1) return prev;
         const realIdx = prev.length - 1 - idx;
         return prev.filter((_, i) => i !== realIdx);
@@ -678,8 +958,19 @@ export default function useDMState({
 
   const handleDMRequestAccepted = useCallback(
     (data: any) => {
-      const otherId = data.other_id;
-      setDmRequestLocks((prev) => ({ ...prev, [String(otherId)]: null }));
+      const otherId =
+        data.other_id ?? data.by_id ?? data.accepter_id ?? data.acceptor_id ?? data.user_id ?? data.target_id ?? data.sender_id;
+      setDmRequestLocks((prev) => {
+        if (otherId == null) {
+          // Payload mein id nahi mili - saare "pending_sent" lock hata do (accept hua hai, wait nahi).
+          const next: Record<string, string | null> = {};
+          Object.keys(prev).forEach((k) => {
+            next[k] = prev[k] === 'pending_sent' ? null : prev[k];
+          });
+          return next;
+        }
+        return { ...prev, [String(otherId)]: null };
+      });
       const otherName = getUsername(otherId) || 'Someone';
       showAlert(`${otherName} accepted your message request!`, 'success');
       inbox.refreshInbox();
@@ -786,7 +1077,7 @@ export default function useDMState({
       // Sound sirf tab jab DM chat khuli ho (inbox list mein ho to nahi).
       if (selectedDM) playMessageSent();
       setChatMessages((prev) => {
-        const idx = [...prev].reverse().findIndex((m) => !m.id && m.content === data.content);
+        const idx = [...prev].reverse().findIndex((m) => matchesPending(m, data));
         if (idx === -1) return prev;
         const realIdx = prev.length - 1 - idx;
         const updated = [...prev];
@@ -810,6 +1101,50 @@ export default function useDMState({
     [dmHasMore, selectedDM]
   );
 
+  // "Wait for request accept" lock atak jaye (accept ke waqt mera socket mara hua tha, event
+  // miss) - restart ke bina bhi theek ho: lock ke dauraan socket reopen / app active / har 10s
+  // history check. Samne wale ka koi bhi message aaya = request accept ho chuki.
+  const lockKey = selectedDM ? String(getTargetId(selectedDM)) : null;
+  const lockValue = lockKey ? dmRequestLocks[lockKey] : null;
+  useEffect(() => {
+    if (!lockKey || lockValue !== 'pending_sent') return;
+    let cancelled = false;
+    const check = async () => {
+      const lastId = [...chatMessagesRef.current].reverse().find((m) => m.id)?.id;
+      if (!lastId) return;
+      try {
+        const token = getToken();
+        const res = await axios.get(`${API_BASE}/ws/dm/history/${lockKey}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          params: { after: lastId },
+        });
+        if (cancelled) return;
+        const missed = (res.data.messages || []).map(normalizeDMHistoryMessage);
+        if (!missed.some((m: any) => String(m.sender_id) !== String(getMyId()))) return;
+        setChatMessages((prev) => {
+          const ids = new Set(prev.map((m) => String(m.id)));
+          return [...prev, ...missed.filter((m: any) => !ids.has(String(m.id)))];
+        });
+        setDmRequestLocks((prev) => ({ ...prev, [lockKey]: null }));
+      } catch {
+        // network issue - agli baar phir check hoga
+      }
+    };
+    const iv = setInterval(check, 10000);
+    const unsubState = networkManager.addStateListener((open) => {
+      if (open) check();
+    });
+    const appSub = AppState.addEventListener('change', (st) => {
+      if (st === 'active') check();
+    });
+    return () => {
+      cancelled = true;
+      clearInterval(iv);
+      unsubState();
+      appSub.remove();
+    };
+  }, [lockKey, lockValue]);
+
   return {
     // state
     selectedDM,
@@ -830,6 +1165,8 @@ export default function useDMState({
     closeChat,
     loadMoreDMHistory,
     sendMessage,
+    sendPhoto,
+    retryMessage,
     deleteDMMessage,
     editDMMessage,
     acceptMessageRequest,

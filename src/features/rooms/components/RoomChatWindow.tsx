@@ -8,7 +8,19 @@ import {
   View,
 } from 'react-native';
 import { MotiView } from 'moti';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import axios from 'axios';
+import { Image } from 'react-native';
+import useAvatarImage from '../../avatar/hooks/useAvatarImage';
+import { FIELD } from '../../../shared/utils/profileFields';
+import { getToken } from '../../../shared/services/NetworkManager';
+import { API_BASE } from '../../../shared/config/config';
+import {
+  applyMemberProfileUpdate,
+  getMemberProfilePatch,
+  subscribeMemberProfileUpdates,
+} from '../services/roomFloorBus';
 import CurrencyIcon from '../../../shared/components/CurrencyIcon';
 import SwipeableBubble from '../../../shared/components/SwipeableBubble';
 import VerifiedBadge from '../../../shared/components/VerifiedBadge';
@@ -27,6 +39,7 @@ import { renderWithMentions } from '../../../shared/utils/renderMentions';
 import { getEquippedByCategory as buildEquippedByCategory } from '../../../shared/utils/profileHelpers';
 import { AVATAR_ASPECT_RATIO_NUM } from '../../avatar/utils/avatarAssets';
 import networkManager from '../../../shared/services/NetworkManager';
+import { toggleRadioMuted, useRadioMuted } from '../services/radioMute';
 
 /**
  * Web version (RoomChatWindow.jsx, 915 lines) ka RN port - room screen
@@ -56,6 +69,43 @@ import networkManager from '../../../shared/services/NetworkManager';
 const MAX_FLOOR_BUBBLES_PER_USER = 4;
 const FLOOR_BUBBLE_LIFETIME_MS = 4500;
 const LONG_PRESS_MS = 400;
+
+// Members list ki chhoti round pfp. Profile roomFloorBus ke cache se aati hai
+// (floor already fetch karta hai); chat-only room mein floor nahi hota, isliye
+// cache khaali ho to yahin se ek baar fetch kar lete hain.
+const MEMBER_PFP = 34;
+const MemberAvatar = memo(function MemberAvatar({ userId, username }: { userId: string | number; username?: string }) {
+  const [, setTick] = useState(0);
+  useEffect(() => subscribeMemberProfileUpdates(() => setTick((t) => t + 1)), []);
+
+  const patch = getMemberProfilePatch(userId);
+  const hasProfile = patch[FIELD.avatar] !== undefined || patch[FIELD.avatarVersion] !== undefined;
+  useEffect(() => {
+    if (hasProfile) return;
+    let cancelled = false;
+    const token = getToken();
+    axios
+      .get(`${API_BASE}/profile/${userId}`, token ? { headers: { Authorization: `Bearer ${token}` } } : {})
+      .then((res) => {
+        if (!cancelled) applyMemberProfileUpdate(userId, res.data || {});
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, hasProfile]);
+
+  const src = useAvatarImage(userId, patch[FIELD.avatar], patch[FIELD.avatarVersion]);
+  return (
+    <View style={styles.memberPfp}>
+      {src ? (
+        <Image source={{ uri: src }} style={styles.memberPfpImg} />
+      ) : (
+        <Text style={styles.memberPfpInitial}>{(username || '?').charAt(0).toUpperCase()}</Text>
+      )}
+    </View>
+  );
+});
 
 const RoomMessageBubble = memo(
   ({
@@ -183,6 +233,8 @@ const RoomChatWindow = ({
   const [activeMsgKey, setActiveMsgKey] = useState<string | null>(null);
   const [showInfoPanel, setShowInfoPanel] = useState(false);
   const [showRadioModal, setShowRadioModal] = useState(false);
+  const radioMuted = useRadioMuted();
+  const insets = useSafeAreaInsets();
   const [showEditRoomModal, setShowEditRoomModal] = useState(false);
   const [showChatDrawer, setShowChatDrawer] = useState(false);
   const [showRoomDrawer, setShowRoomDrawer] = useState(false);
@@ -368,35 +420,32 @@ const RoomChatWindow = ({
       transition={{ type: 'timing', duration: 200 }}
       style={[styles.screen, { zIndex: __z, display: show ? 'flex' : 'none' }]}
     >
-      {/* Top bar */}
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Pressable onPress={onClose} style={styles.iconBtn}>
-            <Ionicons name="arrow-back" size={18} color="#ffffff" />
-          </Pressable>
-          <Pressable onPress={onSwitchRoom} style={styles.switchBtn}>
-            <Ionicons name="swap-horizontal" size={13} color="#ffffff" />
-            <Text style={styles.switchBtnText}>Change Room</Text>
-          </Pressable>
+      {/* Top bar - status bar / notch ke neeche (safe-area), title center mein */}
+      <View style={[styles.header, { paddingTop: insets.top - 18 }]}>
+        <Pressable onPress={onClose} style={styles.circleBtn} hitSlop={6}>
+          <Ionicons name="chevron-back" size={20} color="#ffffff" />
+        </Pressable>
+
+        <View style={styles.titleWrap}>
+          <Text style={styles.roomTitle} numberOfLines={1}>{activeRoom.room_name || 'Room'}</Text>
+          <View style={styles.liveRow}>
+            <View style={styles.liveDot} />
+            <Text style={styles.liveText}>{(members || []).length} online</Text>
+          </View>
         </View>
 
-        {!isChatOnly && (
-          <Pressable
-            onPress={() => floorRef.current?.recenterOnSelf()}
-            style={styles.locateBtn}
-          >
-            <Ionicons name="locate" size={15} color="#ffffff" />
-          </Pressable>
-        )}
-
         <View style={styles.headerRight}>
-          <Pressable onPress={() => setShowInfoPanel((v) => !v)} style={styles.infoBtn}>
-            <Ionicons name="people" size={13} color="#ffffff" />
-            <Text style={styles.infoBtnText}>{(members || []).length}</Text>
-            <Ionicons name="ellipsis-vertical" size={13} color="#ffffff" />
+          {!isChatOnly && (
+            <Pressable onPress={() => floorRef.current?.recenterOnSelf()} style={styles.circleBtn} hitSlop={6}>
+              <Ionicons name="locate" size={17} color="#ffffff" />
+            </Pressable>
+          )}
+          <Pressable onPress={() => setShowInfoPanel((v) => !v)} style={styles.membersPill} hitSlop={6}>
+            <Ionicons name="people" size={15} color="#c7d2fe" />
+            <Text style={styles.membersPillText}>{(members || []).length}</Text>
           </Pressable>
-          <Pressable onPress={onExit} style={styles.exitBtn}>
-            <Text style={styles.exitBtnText}>Exit</Text>
+          <Pressable onPress={onExit} style={styles.exitCircle} hitSlop={6}>
+            <Ionicons name="power" size={16} color="#fca5a5" />
           </Pressable>
         </View>
       </View>
@@ -455,7 +504,7 @@ const RoomChatWindow = ({
       {showInfoPanel && (
         <View style={styles.infoOverlay} pointerEvents="box-none">
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowInfoPanel(false)} />
-          <View style={styles.infoDrawer}>
+          <View style={[styles.infoDrawer, { paddingTop: insets.top + 14 }]}>
             <View style={styles.infoDrawerHeader}>
               <Text style={styles.infoDrawerTitle} numberOfLines={1}>{activeRoom.room_name || 'Room'}</Text>
               <Pressable onPress={() => setShowInfoPanel(false)}>
@@ -468,6 +517,16 @@ const RoomChatWindow = ({
                 <Ionicons name="musical-notes-outline" size={14} color="#ffffff" />
                 <Text style={styles.infoActionText}>Radio</Text>
               </Pressable>
+              <Pressable onPress={onSwitchRoom} style={styles.infoActionBtn}>
+                <Ionicons name="swap-horizontal" size={14} color="#ffffff" />
+                <Text style={styles.infoActionText}>Change Room</Text>
+              </Pressable>
+              {!!activeRoom.radio_url && (
+                <Pressable onPress={toggleRadioMuted} style={styles.infoActionBtn}>
+                  <Ionicons name={radioMuted ? 'volume-mute' : 'volume-high-outline'} size={14} color="#ffffff" />
+                  <Text style={styles.infoActionText}>{radioMuted ? 'Unmute' : 'Mute'}</Text>
+                </Pressable>
+              )}
               {isHost && (
                 <Pressable onPress={() => setShowEditRoomModal(true)} style={styles.infoActionBtn}>
                   <Ionicons name="settings-outline" size={14} color="#ffffff" />
@@ -491,9 +550,12 @@ const RoomChatWindow = ({
             <ScrollView style={styles.memberList}>
               {(members || []).map((m) => (
                 <View key={m.user_id} style={styles.memberRow}>
-                  <Text style={styles.memberName} numberOfLines={1}>
-                    {m.username}{String(m.user_id) === String(activeRoom.owner_id) ? ' 👑' : ''}
-                  </Text>
+                  <View style={styles.memberInfo}>
+                    <MemberAvatar userId={m.user_id} username={m.username} />
+                    <Text style={styles.memberName} numberOfLines={1}>
+                      {m.username}{String(m.user_id) === String(activeRoom.owner_id) ? ' 👑' : ''}
+                    </Text>
+                  </View>
                   {isHost && String(m.user_id) !== String(myId) && (
                     <View style={styles.memberActions}>
                       <Pressable onPress={() => onKick(m.user_id)} style={styles.memberActionBtn}>
@@ -625,20 +687,30 @@ const RoomChatWindow = ({
 const styles = StyleSheet.create({
   screen: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#0f1329', flexDirection: 'column' },
   header: {
-    paddingHorizontal: 12, paddingVertical: 10, backgroundColor: '#161a33',
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    borderBottomWidth: 1, borderBottomColor: '#2a2f55', gap: 6, zIndex: 20,
+    paddingHorizontal: 12, paddingBottom: 10, backgroundColor: '#12152b',
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    borderBottomWidth: 1, borderBottomColor: 'rgba(129,140,248,0.22)', zIndex: 20,
+    shadowColor: '#6366f1', shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 8,
   },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  iconBtn: { padding: 6 },
-  switchBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#262b52', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7 },
-  switchBtnText: { color: '#ffffff', fontSize: 11, fontWeight: '700' },
-  locateBtn: { backgroundColor: '#262b52', borderRadius: 999, padding: 8 },
+  circleBtn: {
+    width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.10)',
+  },
+  titleWrap: { flex: 1, minWidth: 0 },
+  roomTitle: { color: '#ffffff', fontSize: 16, fontWeight: '800', letterSpacing: 0.2 },
+  liveRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
+  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#22c55e' },
+  liveText: { color: '#a5b4fc', fontSize: 11, fontWeight: '600' },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  infoBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#262b52', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 7 },
-  infoBtnText: { color: '#ffffff', fontSize: 11, fontWeight: '700' },
-  exitBtn: { borderWidth: 1, borderColor: 'rgba(248,113,113,0.4)', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 7 },
-  exitBtnText: { color: '#fca5a5', fontSize: 11, fontWeight: '700' },
+  membersPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 5, height: 36, paddingHorizontal: 12, borderRadius: 18,
+    backgroundColor: 'rgba(99,102,241,0.22)', borderWidth: 1, borderColor: 'rgba(129,140,248,0.45)',
+  },
+  membersPillText: { color: '#e0e7ff', fontSize: 12, fontWeight: '800' },
+  exitCircle: {
+    width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(248,113,113,0.12)', borderWidth: 1, borderColor: 'rgba(248,113,113,0.45)',
+  },
   floorArea: { flex: 1, position: 'relative', overflow: 'hidden' },
   chatToggle: {
     alignSelf: 'center', marginBottom: 8, width: 36, height: 28, borderRadius: 14,
@@ -680,6 +752,14 @@ const styles = StyleSheet.create({
   infoActionText: { color: '#ffffff', fontSize: 12, fontWeight: '700' },
   memberList: { flex: 1 },
   memberRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#20244a' },
+  memberInfo: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
+  memberPfp: {
+    width: MEMBER_PFP, height: MEMBER_PFP, borderRadius: MEMBER_PFP / 2, overflow: 'hidden',
+    backgroundColor: '#20244a', alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(129,140,248,0.35)',
+  },
+  memberPfpImg: { width: '100%', height: '100%' },
+  memberPfpInitial: { color: '#ffffff', fontSize: 14, fontWeight: '700' },
   memberName: { color: '#ffffff', fontSize: 13, flexShrink: 1 },
   memberActions: { flexDirection: 'row', gap: 6 },
   memberActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#20244a', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },

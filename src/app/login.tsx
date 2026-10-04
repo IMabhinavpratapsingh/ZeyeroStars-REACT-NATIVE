@@ -78,6 +78,9 @@ const Login = () => {
         id_token: firebaseIdToken,
       });
 
+      // Safety: koi purana socket (kisi bhi logout path se reh gaya ho) naye
+      // account ke saath share na ho - TabsLayout fresh token se naya connect karega.
+      networkManager.disconnect();
       await networkManager.setToken(response.data.token);
       await setMyId(response.data.player.id);
 

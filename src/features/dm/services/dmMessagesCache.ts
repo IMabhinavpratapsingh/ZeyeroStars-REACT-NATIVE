@@ -83,3 +83,8 @@ export function removeCachedMessageEverywhere(messageId: string | number): void 
 export function clearCachedMessages(targetId: string | number): void {
   cache.delete(String(targetId));
 }
+
+// Logout par - saare DM threads ka in-memory cache (account-specific).
+export function clearAllCachedMessages(): void {
+  cache.clear();
+}

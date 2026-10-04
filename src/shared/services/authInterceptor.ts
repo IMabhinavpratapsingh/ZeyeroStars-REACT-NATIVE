@@ -1,8 +1,8 @@
 import axios, { AxiosError } from 'axios';
 import { router } from 'expo-router';
-import networkManager, { clearToken, getToken } from './NetworkManager';
-import { clearUserScopedCaches } from './persistentCache';
-import { buildBanMessage, clearMyId } from '../utils/auth';
+import { getToken } from './NetworkManager';
+import { resetSession } from './sessionReset';
+import { buildBanMessage } from '../utils/auth';
 import { showAlert } from '../utils/alertBus';
 
 // Global auto-logout - agar KISI BHI authenticated API call se 401 (token
@@ -32,10 +32,9 @@ let installed = false;
 
 function forceLogout(banMessage: string | null) {
   // Sabse pehle token (sync) - isse baaki in-flight failures stale ho jaate hain.
-  clearToken().catch(() => {});
-  networkManager.disconnect();
-  clearMyId().catch(() => {});
-  clearUserScopedCaches().catch(() => {}); // owned skills/inventory waghera - agla login galat account ka data na dikhaye
+  // Socket + token + caches - sab ek saath (sessionReset.ts). Token/socket
+  // sync pehle null hote hain, baaki async chalta rehta hai.
+  resetSession().catch(() => {});
 
   try {
     router.replace('/login');

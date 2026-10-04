@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { router } from 'expo-router';
-import networkManager, { clearToken } from '../services/NetworkManager';
-import { clearUserScopedCaches } from '../services/persistentCache';
-import { buildBanMessage, clearMyId } from '../utils/auth';
+import networkManager from '../services/NetworkManager';
+import { resetSession } from '../services/sessionReset';
+import { buildBanMessage } from '../utils/auth';
 import { showAlert } from '../utils/alertBus';
 
 // Ban ka server-side push event: admin ne user ko ban kiya - agar user us
@@ -27,10 +27,7 @@ function handleGlobalBan(data: any) {
   if (handledBan) return;
   handledBan = true;
 
-  clearToken().catch(() => {}); // in-memory token turant (sync) null hota hai
-  networkManager.disconnect();
-  clearMyId().catch(() => {});
-  clearUserScopedCaches().catch(() => {});
+  resetSession().catch(() => {}); // socket + token (sync) pehle, phir caches
 
   try {
     router.replace('/login');

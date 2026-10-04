@@ -105,3 +105,16 @@ export function subscribeWorldChat(fn: (msgs: WorldChatMessage[]) => void): () =
     listeners.delete(fn);
   };
 }
+
+// Logout par - purane account ke world-chat messages (memory + AsyncStorage)
+// hata do, warna agla account login karte hi unhe dekhega.
+export async function clearWorldChatCache(): Promise<void> {
+  await hydratePromise;
+  messages = [];
+  notify();
+  try {
+    await AsyncStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}

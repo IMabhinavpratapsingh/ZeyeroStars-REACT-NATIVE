@@ -6,9 +6,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { API_BASE } from '../../../shared/config/config';
-import { clearToken, getToken } from '../../../shared/services/NetworkManager';
-import { clearMyId } from '../../../shared/utils/auth';
-import { clearUserScopedCaches } from '../../../shared/services/persistentCache';
+import { getToken } from '../../../shared/services/NetworkManager';
+import { resetSession } from '../../../shared/services/sessionReset';
 import useTopZIndex from '../../../shared/hooks/useTopZIndex';
 import useBackButtonHandler from '../../../shared/hooks/useBackButtonHandler';
 import useStableCallback from '../../../shared/hooks/useStableCallback';
@@ -185,9 +184,7 @@ const SettingsMenu = ({ show, onClose, balance, onBalanceUpdate, currentUsername
   };
 
   const handleLogout = async () => {
-    await clearToken();
-    await clearMyId();
-    await clearUserScopedCaches();
+    await resetSession();
     if (onLogout) onLogout();
     else router.replace('/');
   };

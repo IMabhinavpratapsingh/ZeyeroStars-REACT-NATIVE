@@ -14,8 +14,15 @@ const authConfig = () => {
 };
 
 // Response: { posts, has_more }
-export const getFeedPosts = (offset = 0, limit = 10) =>
-  axios.get(`${API_BASE}/feed/posts`, { ...authConfig(), params: { offset, limit } });
+// scope: 'global' (saari posts) ya 'joined' (sirf meri joined communities ki
+// posts - backend khud community ids nikal ke sirf unhi ki posts deta hai).
+export type FeedScope = 'global' | 'joined';
+
+export const getFeedPosts = (offset = 0, limit = 10, scope: FeedScope = 'global') =>
+  axios.get(`${API_BASE}/feed/posts`, {
+    ...authConfig(),
+    params: { offset, limit, ...(scope === 'joined' ? { scope } : {}) },
+  });
 
 // Profile ke Posts tab ke liye - kisi ek user ki posts, naye pehle.
 // Response: { posts, has_more }

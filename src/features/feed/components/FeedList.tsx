@@ -330,6 +330,8 @@ interface FeedListProps extends PostCardCallbacks {
   // Har itne posts ke baad ek native ad (0/undefined = ads band). Home/Feed tab
   // aur community feed pass karte hain; hashtag search mein ads nahi.
   adEvery?: number;
+  // Khaali list par dikhne wala text (default: "No posts yet - pull down to refresh").
+  emptyText?: string;
 }
 
 export default function FeedList({
@@ -350,6 +352,7 @@ export default function FeedList({
   listRef,
   listHeader,
   adEvery = 0,
+  emptyText = 'No posts yet - pull down to refresh',
 }: FeedListProps) {
   const data = useMemo(() => withAds(posts, adEvery), [posts, adEvery]);
 
@@ -421,7 +424,7 @@ export default function FeedList({
       >
         {headerNode}
         <View style={styles.centerFill}>
-          <Text style={styles.emptyText}>No posts yet - pull down to refresh</Text>
+          <Text style={styles.emptyText}>{emptyText}</Text>
         </View>
       </ScrollView>
     );

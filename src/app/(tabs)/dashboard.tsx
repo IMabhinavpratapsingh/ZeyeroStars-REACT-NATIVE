@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import RoomsStrip from '../../features/feed/components/RoomsStrip';
 import FeedList from '../../features/feed/components/FeedList';
+import FeedScopeToggle from '../../features/feed/components/FeedScopeToggle';
 import CreatePostModal, { type PickerCommunity } from '../../features/feed/components/CreatePostModal';
 import PostDetailModal from '../../features/feed/components/PostDetailModal';
 import QuickActionsFab from '../../shared/components/QuickActionsFab';
@@ -42,8 +43,19 @@ export default function DashboardScreen() {
     }>();
 
   const { fetchBalance } = useDashboardBalance();
-  const { posts, loading, loadingMore, refreshing, fetchFeed, refreshFeed, loadMoreFeed, toggleLike, createPost } =
-    useFeedState();
+  const {
+    posts,
+    loading,
+    loadingMore,
+    refreshing,
+    scope,
+    setFeedScope,
+    fetchFeed,
+    refreshFeed,
+    loadMoreFeed,
+    toggleLike,
+    createPost,
+  } = useFeedState();
 
   // Home tab ke andar RoomsStrip ke liye chahiye - poora room-floor
   // system (chat/gifting waghera) abhi is Home wiring ka scope nahi hai,
@@ -201,15 +213,29 @@ export default function DashboardScreen() {
       <FeedList
         adEvery={4}
         listRef={feedListRef}
+        emptyText={
+          scope === 'joined'
+            ? 'No posts from your communities yet - join some communities or pull down to refresh'
+            : undefined
+        }
         listHeader={
-          <RoomsStrip
-            myRoom={myRoom}
-            myRoomLoading={myRoomLoading}
-            onOpenRoom={(room) => requestOpenRoom(room)}
-            onOpenRooms={() => requestOpenRooms()}
-            onOpenRoomDirect={(room) => requestOpenRoom(room)}
-            refreshSignal={`${roomsStripRefreshKey}:${roomsPullRefreshTick}`}
-          />
+          <View>
+            <RoomsStrip
+              myRoom={myRoom}
+              myRoomLoading={myRoomLoading}
+              onOpenRoom={(room) => requestOpenRoom(room)}
+              onOpenRooms={() => requestOpenRooms()}
+              onOpenRoomDirect={(room) => requestOpenRoom(room)}
+              refreshSignal={`${roomsStripRefreshKey}:${roomsPullRefreshTick}`}
+            />
+            <FeedScopeToggle
+              scope={scope}
+              onChange={(next) => {
+                setFeedScope(next);
+                feedListRef.current?.scrollToOffset({ offset: 0, animated: false });
+              }}
+            />
+          </View>
         }
         posts={posts}
         loading={loading}

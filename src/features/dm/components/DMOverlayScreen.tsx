@@ -98,6 +98,11 @@ export default function DMOverlayScreen({ show, onClose, onOpenOverlay, myBalanc
     // notification hota tha.
     showNotification: () => {},
     isInboxOpen: () => show && showInbox,
+    // Chat tabhi "dekhi ja rahi" hai jab overlay visible + app foreground + inbox band. Feed par
+    // chale gaye (chat andar khuli reh gayi) to naya message unread count hona chahiye.
+    isChatViewing: (id) =>
+      show && !showInbox && AppState.currentState === 'active' && !!dm.selectedDM &&
+      String((dm.selectedDM as any).id ?? (dm.selectedDM as any).target_id) === String(id),
   });
 
   // Server ko batao: user abhi (app foreground mein) Inbox dekh raha hai ya kisi
@@ -113,6 +118,13 @@ export default function DMOverlayScreen({ show, onClose, onOpenOverlay, myBalanc
     show && appActive && !showInbox && dm.selectedDM
       ? String((dm.selectedDM as any).id ?? (dm.selectedDM as any).target_id)
       : null;
+  // Chat andar khuli thi par overlay hidden/app background tha aur is dauraan messages aaye (unread
+  // bane) - jaise hi chat wapas screen par aaye, unhe seen mark karo + badge/unread clear.
+  useEffect(() => {
+    if (viewingChatId) dm.markChatSeen(viewingChatId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewingChatId]);
+
   useEffect(() => {
     const report = () => networkManager.send({ type: 'dm_view', inbox: viewingInbox, chat: viewingChatId });
     report();
@@ -121,6 +133,36 @@ export default function DMOverlayScreen({ show, onClose, onOpenOverlay, myBalanc
       if (open) report();
     });
   }, [viewingInbox, viewingChatId]);
+
+  // Socket mar ke dobara khule (ya app background se wapas aaye) to is dauraan ke
+  // miss hue DM events (sirf FCM aaya) inbox list, bottom-nav badge aur khuli chat
+  // me kabhi nahi pahunchte the. Ab har reconnect / foreground par resync hota hai.
+  const lastResyncRef = useRef(0);
+  const resyncDM = useRef<() => void>(() => {});
+  resyncDM.current = () => {
+    const now = Date.now();
+    if (now - lastResyncRef.current < 3000) return; // reconnect + AppState dono ek saath aate hain
+    lastResyncRef.current = now;
+    inbox.refreshInbox();
+    dm.resyncOpenChat();
+  };
+  useEffect(() => {
+    let wasOpen = networkManager.isConnected();
+    const unsubState = networkManager.addStateListener((open) => {
+      if (open && !wasOpen) resyncDM.current();
+      wasOpen = open;
+    });
+    const appSub = AppState.addEventListener('change', async (st) => {
+      if (st !== 'active') return;
+      // Zombie socket detect + reconnect pehle, phir resync (reconnect par bhi chalega, 3s guard).
+      await networkManager.ensureAlive();
+      resyncDM.current();
+    });
+    return () => {
+      unsubState();
+      appSub.remove();
+    };
+  }, []);
 
   // Trade (DM header ke Trade button se) - web Dashboard ka trade state ab yahan.
   // Incoming request accept -> DM overlay khulta hai + us user ki chat select hoti hai.
@@ -154,7 +196,7 @@ export default function DMOverlayScreen({ show, onClose, onOpenOverlay, myBalanc
       chatMessages: dm.chatMessages,
       loading: dm.chatLoading,
       hasMore: dm.dmHasMore,
-      loadingMore: dm.dmLoadingMore,
+      loadingMore: dm.dmLoadingMore || dm.dmSyncing,
       typing: dm.dmOtherTyping,
       requestLock:
         (dm.dmRequestLocks as any)[String(dm.selectedDM?.id ?? dm.selectedDM?.target_id)] ?? null,

@@ -38,6 +38,42 @@ const normalizeDMHistoryMessage = (m: any): CachedDMMessage => ({
   edited: !!m.is_edited,
 });
 
+// Catch-up / resync ka common merge: deleted hatao, edited replace karo, aur server se aaye
+// messages jodo. Mera apna bheja hua jo message abhi id-less (pending / "Not sent") hai aur
+// server par pahunch chuka hai, use duplicate bubble banane ki jagah usi bubble par id lagao.
+const sameBody = (a: any, b: any) =>
+  b.is_photo ? a.is_photo === b.is_photo : !a.is_photo && String(a.content ?? '').trim() === String(b.content ?? '').trim();
+
+const mergeFetched = (
+  list: CachedDMMessage[],
+  fetched: CachedDMMessage[],
+  editedById: Map<string, any>,
+  deletedIds: Set<string>
+): CachedDMMessage[] => {
+  const myId = String(getMyId());
+  const out: any[] = list
+    .filter((m: any) => !(m.id != null && deletedIds.has(String(m.id))))
+    .map((m: any) => {
+      const e = m.id != null ? editedById.get(String(m.id)) : undefined;
+      return e ? { ...m, content: e.content, edited: true, is_edited: true, updated_at: e.updated_at } : m;
+    });
+  const seen = new Set(out.filter((m) => m.id != null).map((m) => String(m.id)));
+  for (const f of fetched as any[]) {
+    if (f.id == null || seen.has(String(f.id)) || deletedIds.has(String(f.id))) continue;
+    if (String(f.sender_id) === myId) {
+      const pi = out.findIndex((m) => m.id == null && !m.uploading && sameBody(m, f));
+      if (pi !== -1) {
+        out[pi] = { ...out[pi], id: f.id, created_at: f.created_at, failed: false };
+        seen.add(String(f.id));
+        continue;
+      }
+    }
+    out.push(f);
+    seen.add(String(f.id));
+  }
+  return out;
+};
+
 // Photo message: content khaali, `is_photo` mein photo ka URL. Inbox/notification/
 // reply-preview mein text ki jagah yeh label dikhta hai.
 const PHOTO_PREVIEW = '📷 Photo';
@@ -71,6 +107,9 @@ export interface UseDMStateArgs {
   showNotification: (from: { id: string | number; username?: string; avatar_url?: string | null; avatar_version?: number }, text: string) => void;
   /** Dashboard-level "kya inbox modal abhi khuli hai" - popup dikhana hai ya nahi, isi se decide hota hai */
   isInboxOpen: () => boolean;
+  /** Kya yeh user ki chat ABHI sach me screen par dikh rahi hai (overlay visible + app foreground)?
+   *  Na ho (jaise Feed par chale gaye, chat andar khuli reh gayi) to naya message unread count hoga. */
+  isChatViewing?: (targetId: string | number) => boolean;
 }
 
 /**
@@ -90,12 +129,15 @@ export default function useDMState({
   setRoomScreenVisible,
   showNotification,
   isInboxOpen,
+  isChatViewing,
 }: UseDMStateArgs) {
   const [selectedDM, setSelectedDM] = useState<DMUser | null>(null);
   const [chatMessages, setChatMessages] = useState<CachedDMMessage[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
   const [dmHasMore, setDmHasMore] = useState(false);
   const [dmLoadingMore, setDmLoadingMore] = useState(false);
+  // Chat khulte / reconnect par catch-up fetch chal raha ho to chat ke top par wahi spinner.
+  const [dmSyncing, setDmSyncing] = useState(false);
   const [dmOtherTyping, setDmOtherTyping] = useState(false);
   // Inbox list ke liye: kaun-kaun se users (target_id strings) abhi mujhe type kar rahe hain -
   // chat khuli ho ya nahi, dono case mein.
@@ -154,6 +196,8 @@ export default function useDMState({
   // ---------------------------------------------------------------------
   const selectedDMRef = useRef<DMUser | null>(selectedDM);
   selectedDMRef.current = selectedDM;
+  const isChatViewingRef = useRef(isChatViewing);
+  isChatViewingRef.current = isChatViewing;
   const chatMessagesRef = useRef(chatMessages);
   chatMessagesRef.current = chatMessages;
 
@@ -234,6 +278,7 @@ export default function useDMState({
       if (historyOk) {
         networkManager.send({
           type: 'dm',
+          client_id: cid,
           target_id: targetId,
           ...(photoUrl ? { photo_url: photoUrl } : { message: content }),
           ...(replyingTo ? { replying_to: replyingTo } : {}),
@@ -262,6 +307,7 @@ export default function useDMState({
         patchPendingMessage(targetId, cid, { is_photo: url, uploading: false });
         networkManager.sendOrQueue({
           type: 'dm',
+          client_id: cid,
           target_id: targetId,
           photo_url: url,
           ...(replyingTo ? { replying_to: replyingTo } : {}),
@@ -294,6 +340,7 @@ export default function useDMState({
         patchPendingMessage(targetId, msg._cid, { failed: false });
         networkManager.sendOrQueue({
           type: 'dm',
+          client_id: msg._cid,
           target_id: targetId,
           photo_url: msg.is_photo,
           ...(msg.replying_to ? { replying_to: msg.replying_to } : {}),
@@ -305,6 +352,7 @@ export default function useDMState({
       patchPendingMessage(targetId, msg._cid, { failed: false });
       networkManager.sendOrQueue({
         type: 'dm',
+        client_id: msg._cid,
         target_id: targetId,
         message: msg.content,
         ...(msg.replying_to ? { replying_to: msg.replying_to } : {}),
@@ -314,6 +362,51 @@ export default function useDMState({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [patchPendingMessage, verifyDelivery]
   );
+
+  /**
+   * Socket reconnect / app foreground ke baad: khuli chat me jo kuch miss hua
+   * (naye messages + offline ke dauraan edit/delete) wo catch-up karo. Pehle sirf
+   * chat KHOLTE waqt catch-up hota tha, isliye chat khuli rehte hue socket mar
+   * jaye to naye messages tab tak nahi aate the jab tak chat band-khol na karo.
+   */
+  const resyncOpenChat = useCallback(async () => {
+    const sel = selectedDMRef.current;
+    if (!sel) return;
+    const targetId = getTargetId(sel)!;
+    // Aakhri message agar abhi id-less (pending/Not sent) hai to bhi catch-up chalna chahiye -
+    // isliye aakhri id wala message cursor banta hai; koi id-wala hai hi nahi to latest page.
+    const lastId = [...chatMessagesRef.current].reverse().find((m: any) => m.id)?.id;
+    setDmSyncing(true);
+    try {
+      const token = getToken();
+      const res = await axios.get(`${API_BASE}/ws/dm/history/${targetId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        params: lastId ? { after: lastId } : { limit: DM_INITIAL_SIZE },
+      });
+      const missed = (res.data.messages || []).map(normalizeDMHistoryMessage);
+      const editedById = new Map<string, any>(
+        (res.data.edited || []).map((m: any) => [String(m.id), normalizeDMHistoryMessage(m)])
+      );
+      const deletedIds = new Set<string>((res.data.deleted_ids || []).map((id: any) => String(id)));
+      if (!missed.length && !editedById.size && !deletedIds.size) return;
+
+      // Chat band/badal gayi ho to is response ko apply mat karo.
+      const still = selectedDMRef.current;
+      if (!still || String(getTargetId(still)) !== String(targetId)) return;
+
+      setChatMessages((prev) => mergeFetched(prev, missed, editedById, deletedIds));
+      const c = getCachedMessages(targetId);
+      if (c) setCachedMessages(targetId, mergeFetched(c.messages, missed, editedById, deletedIds), c.hasMore);
+      if (missed.some((m: any) => String(m.sender_id) !== String(getMyId())) && (!isChatViewingRef.current || isChatViewingRef.current(targetId))) {
+        networkManager.send({ type: 'dm_seen', target_id: targetId });
+      }
+    } catch (err: any) {
+      console.error('DM resync error:', err?.response?.data || err?.message);
+    } finally {
+      setDmSyncing(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const markDMSeenAndClearUnread = useCallback(
     (targetId: string | number) => {
@@ -371,29 +464,40 @@ export default function useDMState({
         setChatLoading(false);
         markDMSeenAndClearUnread(targetId);
 
-        const lastId = cached.messages[cached.messages.length - 1]?.id;
-        if (lastId) {
-          try {
-            const token = getToken();
-            const res = await axios.get(`${API_BASE}/ws/dm/history/${targetId}`, {
-              headers: { Authorization: `Bearer ${token}` },
-              params: { after: lastId },
-            });
-            const missed = (res.data.messages || []).map(normalizeDMHistoryMessage);
-            if (missed.length) {
-              const have = new Set(cached.messages.map((m) => String(m.id)));
-              const fresh = missed.filter((m: any) => !have.has(String(m.id)));
-              if (fresh.length) {
-                setChatMessages((prev) => {
-                  const ids = new Set(prev.map((m) => String(m.id)));
-                  return [...prev, ...fresh.filter((m: any) => !ids.has(String(m.id)))];
-                });
-                setCachedMessages(targetId, [...cached.messages, ...fresh], cached.hasMore);
-              }
+        // BUG FIX: pehle yahan sirf CACHE KA AAKHRI message dekha jaata tha - wo mera "Not sent"/
+        // id-less message ho to lastId undefined -> catch-up poora skip, dost ke naye messages
+        // kabhi fetch hi nahi hote the. Ab aakhri id-wala message cursor hai (koi nahi to latest page).
+        const lastId = [...cached.messages].reverse().find((m: any) => m.id)?.id;
+        setDmSyncing(true);
+        try {
+          const token = getToken();
+          const res = await axios.get(`${API_BASE}/ws/dm/history/${targetId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+            params: lastId ? { after: lastId } : { limit: DM_INITIAL_SIZE },
+          });
+          const missed = (res.data.messages || []).map(normalizeDMHistoryMessage);
+          // Offline ke dauraan jo messages EDIT / DELETE hue wo bhi cache me apply karo.
+          const editedById = new Map<string, any>(
+            (res.data.edited || []).map((m: any) => [String(m.id), normalizeDMHistoryMessage(m)])
+          );
+          const deletedIds = new Set<string>((res.data.deleted_ids || []).map((id: any) => String(id)));
+
+          if (missed.length || editedById.size || deletedIds.size) {
+            // Is dauraan chat badal/band ho gayi ho to on-screen list ko mat chhedo (cache phir bhi update).
+            const still = selectedDMRef.current;
+            if (still && String(getTargetId(still)) === String(targetId)) {
+              setChatMessages((prev) => mergeFetched(prev, missed, editedById, deletedIds));
             }
-          } catch (err: any) {
-            console.error('DM catch-up fetch error:', err?.response?.data || err?.message);
+            const latest = getCachedMessages(targetId) || cached;
+            setCachedMessages(targetId, mergeFetched(latest.messages, missed, editedById, deletedIds), latest.hasMore);
+            if (missed.some((m: any) => String(m.sender_id) !== String(getMyId()))) {
+              networkManager.send({ type: 'dm_seen', target_id: targetId });
+            }
           }
+        } catch (err: any) {
+          console.error('DM catch-up fetch error:', err?.response?.data || err?.message);
+        } finally {
+          setDmSyncing(false);
         }
         return;
       }
@@ -606,6 +710,7 @@ export default function useDMState({
       // deta hai, bubble "Sending..." dikhata rehta hai jab tak ack na aaye.
       networkManager.sendOrQueue({
         type: 'dm',
+        client_id: cid,
         target_id: targetId,
         message: text,
         ...(replyingTo ? { replying_to: replyingTo } : {}),
@@ -772,6 +877,11 @@ export default function useDMState({
       const dmId = selectedDM && getTargetId(selectedDM);
       if (selectedDM && String(data.sender_id) === String(dmId)) {
         const targetId = dmId!;
+        // Chat state me khuli hai, lekin screen par dikh rahi hai? Feed/doosre tab par chale gaye
+        // (overlay hidden) ya app background me ho to yeh message UNREAD hai - server ne bhi isi
+        // wajah se FCM bheja. Pehle yahan hamesha dm_seen chala jaata tha: red dot nahi aata tha,
+        // unread DB me read ho jaata tha, badge kabhi nahi dikhta tha.
+        const viewing = isChatViewing ? isChatViewing(targetId) : true;
         const newMsg: CachedDMMessage = {
           id: data.id,
           content: data.content,
@@ -803,11 +913,27 @@ export default function useDMState({
           setDmRequestLocks((prev) => (prev[String(targetId)] ? { ...prev, [String(targetId)]: null } : prev));
         }
 
-        networkManager.send({ type: 'dm_seen', target_id: data.sender_id });
+        if (viewing) {
+          networkManager.send({ type: 'dm_seen', target_id: data.sender_id });
+        } else if (data.conversation_status !== 'pending') {
+          inbox.bumpUnread(
+            !inbox.inboxList.some(
+              (d: InboxRow) => String(d.target_id) === String(data.sender_id) && (d.unread_count || 0) > 0
+            )
+          );
+        }
 
         inbox.upsertInboxRow(
           data.sender_id,
-          { last_message: preview, last_message_time: data.created_at, last_message_mine: false },
+          viewing || data.conversation_status === 'pending'
+            ? { last_message: preview, last_message_time: data.created_at, last_message_mine: false }
+            : (row: InboxRow) => ({
+                ...row,
+                unread_count: (row.unread_count || 0) + 1,
+                last_message: preview,
+                last_message_time: data.created_at,
+                last_message_mine: false,
+              }),
           {
             target_id: data.sender_id,
             username: selectedDM.username,
@@ -817,7 +943,7 @@ export default function useDMState({
             last_message: preview,
             last_message_time: data.created_at,
             last_message_mine: false,
-            unread_count: 0,
+            unread_count: viewing || data.conversation_status === 'pending' ? 0 : 1,
           }
         );
       } else {
@@ -879,7 +1005,7 @@ export default function useDMState({
         );
       }
     },
-    [cacheUser, getUsername, inbox, isInboxOpen, selectedDM, setTypingFor, showNotification]
+    [cacheUser, getUsername, inbox, isChatViewing, isInboxOpen, selectedDM, setTypingFor, showNotification]
   );
 
   const handleDMSeen = useCallback(
@@ -1076,6 +1202,24 @@ export default function useDMState({
     (data: any) => {
       // Sound sirf tab jab DM chat khuli ho (inbox list mein ho to nahi).
       if (selectedDM) playMessageSent();
+      // BUG FIX: ack ko pehle sirf ON-SCREEN list me content se match kiya jaata tha. Bheja aur
+      // turant chat band / Feed par chale gaye to ack kahin match nahi hota tha - message cache me
+      // hamesha id-less rehta, 5s baad "Not sent" dikhta (jabki dost ko pahunch chuka hota).
+      // Ab server ack me client_id + target_id bhejta hai: cache aur screen dono exact _cid se patch.
+      if (data.client_id && data.target_id != null) {
+        patchPendingMessage(data.target_id, String(data.client_id), {
+          id: data.id,
+          created_at: data.created_at,
+          failed: false,
+        });
+        if (data.conversation_status && selectedDM && String(getTargetId(selectedDM)) === String(data.target_id)) {
+          setDmRequestLocks((prev) => ({
+            ...prev,
+            [String(data.target_id)]: data.conversation_status === 'pending' ? 'pending_sent' : null,
+          }));
+        }
+        return;
+      }
       setChatMessages((prev) => {
         const idx = [...prev].reverse().findIndex((m) => matchesPending(m, data));
         if (idx === -1) return prev;
@@ -1098,7 +1242,7 @@ export default function useDMState({
         }));
       }
     },
-    [dmHasMore, selectedDM]
+    [dmHasMore, selectedDM, patchPendingMessage]
   );
 
   // "Wait for request accept" lock atak jaye (accept ke waqt mera socket mara hua tha, event
@@ -1154,6 +1298,7 @@ export default function useDMState({
     chatLoading,
     dmHasMore,
     dmLoadingMore,
+    dmSyncing,
     dmOtherTyping,
     dmTypingIds,
     dmDraftMessage,
@@ -1168,6 +1313,8 @@ export default function useDMState({
     sendPhoto,
     retryMessage,
     deleteDMMessage,
+    resyncOpenChat,
+    markChatSeen: markDMSeenAndClearUnread,
     editDMMessage,
     acceptMessageRequest,
     declineMessageRequest,

@@ -77,6 +77,11 @@ export const searchHashtagPosts = (query: string, offset = 0, limit = 10) =>
 export const getComments = (postId: Id, offset = 0, limit = 30) =>
   axios.get(`${API_BASE}/feed/comments/${postId}`, { ...authConfig(), params: { offset, limit } });
 
+// Comment like/unlike - Response: { liked, likes } (togglePostLike jaisa hi).
+// Query param: comment_id.
+export const toggleCommentLike = (commentId: Id) =>
+  axios.post(`${API_BASE}/feed/toggle_like/comment`, null, { ...authConfig(), params: { comment_id: commentId } });
+
 export const addComment = ({
   postId,
   content,
@@ -97,3 +102,9 @@ export const addComment = ({
 
 // Comment delete par uske replies backend mein cascade delete ho jaate hain.
 export const deleteComment = (commentId: Id) => axios.delete(`${API_BASE}/feed/comment/${commentId}`, authConfig());
+
+// Post views - feed mein jab post screen par dikhe to batch mein bhejte hain
+// (postViewTracker.ts). Body: { post_ids: [..] }. Backend har (user, post) ka
+// view sirf EK baar count kare (unique viewer) - client bhi session mein dedupe karta hai.
+export const recordPostViews = (postIds: Id[]) =>
+  axios.post(`${API_BASE}/feed/posts/views`, { post_ids: postIds }, authConfig());

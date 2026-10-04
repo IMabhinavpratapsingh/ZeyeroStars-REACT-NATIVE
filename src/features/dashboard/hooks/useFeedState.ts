@@ -24,6 +24,8 @@ export interface FeedPost {
   created_at?: string;
   likes_count?: number;
   comments_count?: number;
+  // Backend bhejega to card ke bottom-right mein "1.8k views" dikhta hai.
+  views_count?: number;
   liked_by_me?: boolean;
   hashtag?: string;
   community_id?: string | number;

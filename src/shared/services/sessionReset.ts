@@ -3,6 +3,7 @@ import { clearMyId } from '../utils/auth';
 import { clearUserScopedCaches } from './persistentCache';
 import { clearWorldChatCache } from './worldChatCache';
 import { clearAllCachedMessages } from '../../features/dm/services/dmMessagesCache';
+import { clearPostViewTracker } from '../../features/feed/services/postViewTracker';
 
 /**
  * Logout / forced-logout / ban - teeno ke liye EK hi jagah.
@@ -20,6 +21,7 @@ export async function resetSession(): Promise<void> {
   networkManager.disconnect();
   const tokenCleared = clearToken().catch(() => {});
   clearAllCachedMessages();
+  clearPostViewTracker();
   await Promise.all([
     tokenCleared,
     clearMyId().catch(() => {}),

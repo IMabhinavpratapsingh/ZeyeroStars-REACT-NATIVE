@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo } from 'react';
+import { memo, useCallback, useMemo, useRef } from 'react';
 import type { ReactNode, Ref } from 'react';
 import {
   ActivityIndicator,
@@ -24,6 +24,9 @@ import CommunityAvatar from '../../communities/components/CommunityAvatar';
 import { renderWithMentions } from '../../../shared/utils/renderMentions';
 import { getProfile, truncate } from '../../../shared/utils/profileHelpers';
 import type { FeedPost } from '../../dashboard/hooks/useFeedState';
+import { getMyId } from '../../../shared/utils/auth';
+import { formatViews } from '../../../shared/utils/formatCount';
+import { trackPostView } from '../services/postViewTracker';
 
 // WEB -> RN PARITY PASS: pehle FeedList.tsx sirf ek MVP core list tha
 // (pfp + username + time + text + like). Ab web ke FeedList.jsx jaisi
@@ -295,6 +298,9 @@ const PostCard = memo(function PostCard({
           <Ionicons name="chatbubble-outline" size={19} color="#a1a1aa" />
           <Text style={styles.actionCount}>{post.comments_count || 0}</Text>
         </Pressable>
+        {typeof post.views_count === 'number' && (
+          <Text style={styles.viewsText}>{formatViews(post.views_count)}</Text>
+        )}
       </View>
     </Pressable>
   );
@@ -346,6 +352,19 @@ export default function FeedList({
   adEvery = 0,
 }: FeedListProps) {
   const data = useMemo(() => withAds(posts, adEvery), [posts, adEvery]);
+
+  // View tracking: post 60% visible rehne par ~0.8s ke baad count hota hai.
+  // FlatList ye callback/config badalne nahi deta, isliye ref mein stable rakhe.
+  // Apni khud ki post ka view count nahi karte.
+  const viewabilityConfigRef = useRef({ itemVisiblePercentThreshold: 60, minimumViewTime: 800 });
+  const onViewableItemsChangedRef = useRef(({ viewableItems }: { viewableItems: { item: FeedItem }[] }) => {
+    const myId = getMyId();
+    viewableItems.forEach(({ item }) => {
+      if (!item || isAdItem(item)) return;
+      if (myId && String(item.user_id) === String(myId)) return;
+      trackPostView(item.id);
+    });
+  });
 
   const renderItem = useCallback(
     ({ item }: { item: FeedItem }) =>
@@ -415,6 +434,8 @@ export default function FeedList({
       data={data}
       keyExtractor={(item) => (isAdItem(item) ? item.key : String(item.id))}
       renderItem={renderItem}
+      viewabilityConfig={viewabilityConfigRef.current}
+      onViewableItemsChanged={onViewableItemsChangedRef.current}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#ffffff" />
       }
@@ -488,7 +509,8 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     backgroundColor: '#18181b',
   },
-  actionsRow: { flexDirection: 'row', gap: 20, marginTop: 12 },
+  actionsRow: { flexDirection: 'row', alignItems: 'center', gap: 20, marginTop: 12 },
+  viewsText: { marginLeft: 'auto', color: '#71717a', fontSize: 12 },
   actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   actionCount: { color: '#a1a1aa', fontSize: 12 },
 });

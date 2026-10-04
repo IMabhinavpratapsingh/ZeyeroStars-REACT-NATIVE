@@ -32,7 +32,8 @@ import { renderWithMentions } from '../../../shared/utils/renderMentions';
 import RankBadge from '../../../shared/components/RankBadge';
 import VerifiedBadge from '../../../shared/components/VerifiedBadge';
 import EliteBadge from '../../../shared/components/EliteBadge';
-import { addComment, deleteComment, deletePost, getComments } from '../services/feedApi';
+import { addComment, deleteComment, deletePost, getComments, toggleCommentLike } from '../services/feedApi';
+import { formatCount, formatViews } from '../../../shared/utils/formatCount';
 import type { FeedPost } from '../../dashboard/hooks/useFeedState';
 
 /**
@@ -57,6 +58,8 @@ interface Comment {
   content: string;
   created_at?: string;
   parent_comment_id?: string | number | null;
+  likes_count?: number;
+  liked_by_me?: boolean;
   [key: string]: unknown;
 }
 
@@ -147,6 +150,7 @@ const CommentRow = memo(function CommentRow({
   onReportComment,
   onReplyComment,
   onCopyComment,
+  onToggleLike,
   onOpenCommunityBySlug,
 }: {
   c: Comment;
@@ -162,6 +166,7 @@ const CommentRow = memo(function CommentRow({
   onReportComment: () => void;
   onReplyComment: (targetId: string | number, username?: string) => void;
   onCopyComment: (text: string) => void;
+  onToggleLike: (id: string | number) => void;
   onOpenCommunityBySlug?: (slug: string, communityName: string) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -249,6 +254,15 @@ const CommentRow = memo(function CommentRow({
         )}
       </View>
 
+      <Pressable onPress={() => onToggleLike(c.id)} hitSlop={10} style={styles.commentLikeBtn}>
+        <Ionicons
+          name={c.liked_by_me ? 'heart' : 'heart-outline'}
+          size={isReply ? 15 : 17}
+          color={c.liked_by_me ? '#f87171' : '#71717a'}
+        />
+        {(c.likes_count || 0) > 0 && <Text style={styles.commentLikeCount}>{formatCount(c.likes_count || 0)}</Text>}
+      </Pressable>
+
       <LongPressActionSheet
         open={menuOpen}
         anchor={menuAnchor}
@@ -280,6 +294,7 @@ const PostDetailModal = ({
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const offsetRef = useRef(0);
+  const likePendingRef = useRef<Set<string>>(new Set());
   const myId = getMyId();
 
   // Kaunsi top-level comment ki reply-thread abhi khuli hai.
@@ -326,18 +341,21 @@ const PostDetailModal = ({
     }
   };
 
-  const load = useCallback(async (postId: string | number) => {
-    setLoading(true);
+  // NOTE: offset TOP-LEVEL comments ginta hai (replies nahi) - isliye agla
+  // offset hamesha backend ke `next_offset` se lete hain, list.length se nahi.
+  // silent=true: spinner nahi (naya comment bhejne ke baad refresh ke liye).
+  const load = useCallback(async (postId: string | number, silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const res = await getComments(postId, 0, 30);
       const list: Comment[] = res.data.comments || [];
       setComments(list);
-      offsetRef.current = list.length;
+      offsetRef.current = res.data.next_offset ?? list.length;
       setHasMore(!!res.data.has_more);
     } catch (err: any) {
       console.error('Comments load error:', err.response?.data || err.message);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
@@ -402,7 +420,7 @@ const PostDetailModal = ({
         const existing = new Set(prev.map((c) => c.id));
         return [...prev, ...list.filter((c) => !existing.has(c.id))];
       });
-      offsetRef.current += list.length;
+      offsetRef.current = res.data.next_offset ?? offsetRef.current + list.length;
       setHasMore(!!res.data.has_more);
     } catch (err: any) {
       console.error('Comments load more error:', err.response?.data || err.message);
@@ -423,19 +441,12 @@ const PostDetailModal = ({
       if (parentId != null) {
         setOpenReplyThreads((prev) => new Set(prev).add(parentId));
       }
-      // Backend POST /feed/comment naya comment return nahi karta (web bhi
-      // isliye refetch karta hai) - comments ascending order mein hain, to
-      // ab tak load hue comments ke baad wala hissa mangwa kar append karo.
-      const res = await getComments(post.id, offsetRef.current, 30);
-      const fresh: Comment[] = res.data.comments || [];
-      setComments((prev) => {
-        const existing = new Set(prev.map((c) => String(c.id)));
-        return [...prev, ...fresh.filter((c) => !existing.has(String(c.id)))];
-      });
-      offsetRef.current += fresh.length;
-      setHasMore(!!res.data.has_more);
+      // Backend POST /feed/comment naya comment return nahi karta, aur ab
+      // order "likes ke hisaab se" hai - naya comment (ya reply)
+      // sahi jagah par dikhane ke liye page 0 se dobara mangwate hain.
+      await load(post.id, true);
       if (parentId == null) {
-        setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
+        setTimeout(() => listRef.current?.scrollToOffset({ offset: 0, animated: true }), 100);
       }
     } catch (err: any) {
       console.error('Add comment error:', err.response?.data || err.message);
@@ -471,6 +482,45 @@ const PostDetailModal = ({
     } catch (err: any) {
       console.error('Delete post error:', err.response?.data || err.message);
     }
+  };
+
+  // Comment like - optimistic (heart turant badlega), fail hone par sirf
+  // usi comment ko purani state par wapas laate hain. Ek comment par
+  // request chal rahi ho to dobara tap ignore (double-tap se count ulta
+  // na ho), server ka {liked, likes} aate hi final state wahi.
+  const handleToggleCommentLike = (commentId: string | number) => {
+    const key = String(commentId);
+    if (likePendingRef.current.has(key)) return;
+    const target = comments.find((x) => String(x.id) === key);
+    if (!target) return;
+    const prevLiked = !!target.liked_by_me;
+    const prevCount = target.likes_count || 0;
+
+    likePendingRef.current.add(key);
+    setComments((list) =>
+      list.map((x) =>
+        String(x.id) === key
+          ? { ...x, liked_by_me: !prevLiked, likes_count: Math.max(0, prevCount + (prevLiked ? -1 : 1)) }
+          : x
+      )
+    );
+    toggleCommentLike(commentId)
+      .then((res) => {
+        setComments((list) =>
+          list.map((x) =>
+            String(x.id) === key ? { ...x, liked_by_me: !!res.data.liked, likes_count: res.data.likes } : x
+          )
+        );
+      })
+      .catch((err: any) => {
+        console.error('Comment like error:', err.response?.data || err.message);
+        setComments((list) =>
+          list.map((x) => (String(x.id) === key ? { ...x, liked_by_me: prevLiked, likes_count: prevCount } : x))
+        );
+      })
+      .finally(() => {
+        likePendingRef.current.delete(key);
+      });
   };
 
   const toggleReplyThread = (commentId: string | number) => {
@@ -556,6 +606,7 @@ const PostDetailModal = ({
                   }
                   onReplyComment={(id, username) => setReplyingTo({ id, username })}
                   onCopyComment={copyText}
+                  onToggleLike={handleToggleCommentLike}
                 />
                 {repliesOpen && (
                   <View style={styles.repliesWrap}>
@@ -578,6 +629,7 @@ const PostDetailModal = ({
                           }
                           onReplyComment={(id, username) => setReplyingTo({ id, username })}
                           onCopyComment={copyText}
+                          onToggleLike={handleToggleCommentLike}
                         />
                       );
                     })}
@@ -660,6 +712,9 @@ const PostDetailModal = ({
                   <Ionicons name="chatbubble-outline" size={19} color="#a1a1aa" />
                   <Text style={styles.actionCount}>{comments.length}</Text>
                 </View>
+                {typeof post.views_count === 'number' && (
+                  <Text style={styles.viewsText}>{formatViews(post.views_count)}</Text>
+                )}
               </View>
               <View style={styles.divider} />
               <Text style={styles.commentsHeading}>Comments</Text>
@@ -795,6 +850,7 @@ const styles = StyleSheet.create({
   postActionsRow: { flexDirection: 'row', gap: 20, marginBottom: 12, marginTop: 4 },
   actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   actionCount: { color: '#a1a1aa', fontSize: 12 },
+  viewsText: { marginLeft: 'auto', color: '#71717a', fontSize: 12 },
   divider: { height: 1, backgroundColor: '#27272a', marginBottom: 12 },
   commentsHeading: { color: '#d4d4d8', fontSize: 13, fontWeight: '700', marginBottom: 10 },
   emptyText: { color: '#71717a', fontSize: 13, textAlign: 'center', paddingVertical: 12 },
@@ -814,6 +870,8 @@ const styles = StyleSheet.create({
   commentHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   commentUsername: { color: '#e4e4e7', fontSize: 12, fontWeight: '700' },
   commentContent: { color: '#d4d4d8', fontSize: 13, lineHeight: 17, marginTop: 1 },
+  commentLikeBtn: { alignItems: 'center', minWidth: 24, paddingTop: 4, gap: 2 },
+  commentLikeCount: { color: '#a1a1aa', fontSize: 11 },
   viewRepliesText: { color: '#a1a1aa', fontSize: 12, fontWeight: '700', marginTop: 6 },
 
   replyingBar: {

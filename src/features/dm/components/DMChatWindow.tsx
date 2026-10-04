@@ -36,6 +36,8 @@ import useStableCallback from '../../../shared/hooks/useStableCallback';
 import useLongPress, { type LongPressPosition } from '../../../shared/hooks/useLongPress';
 import networkManager from '../../../shared/services/NetworkManager';
 import { renderWithMentions } from '../../../shared/utils/renderMentions';
+import useDMWallpaper from '../services/dmWallpaper';
+import WallpaperCropModal from './WallpaperCropModal';
 
 /**
  * DM chat window (1-on-1). Trade yahin ke andar hoti hai (header ka
@@ -420,6 +422,17 @@ const DMChatWindow = ({
 
   const dmTargetId = selectedDM?.id || selectedDM?.target_id;
 
+  // Custom wallpaper - sirf is phone ke AsyncStorage me (dmWallpaper.ts), sirf verified users set kar sakte hain.
+  const {
+    wallpaper,
+    pending: wallpaperPending,
+    saving: wallpaperSaving,
+    startPick: startWallpaperPick,
+    confirmCrop: confirmWallpaperCrop,
+    cancelCrop: cancelWallpaperCrop,
+    clear: clearWallpaper,
+  } = useDMWallpaper(getMyId(), dmTargetId);
+
   // Header (pfp + naam) aur bubble ke bagal wala pfp - dono isi se us user ki
   // profile kholte hain (profileOpenBus -> ProfileViewModal).
   const openPartnerProfile = useCallback(() => {
@@ -582,6 +595,35 @@ const DMChatWindow = ({
 
   const comingSoon = (what: string) => showActionToast(`${what} is coming soon.`);
 
+  // Apna verified status (useRankCache se - GET /profile/{myId}). undefined = abhi load ho raha hai.
+  const iAmVerified: boolean | undefined = verifieds[String(getMyId())];
+
+  const handleChangeWallpaper = async () => {
+    if (iAmVerified === undefined) {
+      showActionToast('Checking your account, try again in a moment.');
+      return;
+    }
+    if (!iAmVerified) {
+      showActionToast('Custom wallpaper is only for verified users.');
+      return;
+    }
+    // Gallery -> crop screen (WallpaperCropModal neeche render hota hai) -> handleWallpaperCropConfirm
+    const r = await startWallpaperPick();
+    if (r === 'error') showActionToast('Could not open the image.');
+  };
+
+  const handleWallpaperCropConfirm = async (region: { originX: number; originY: number; width: number; height: number }) => {
+    const res = await confirmWallpaperCrop(region);
+    if (res.ok) showActionToast('Wallpaper updated (saved on this device only).');
+    else if (res.reason === 'too_large') showActionToast('Image is too large, try a different one.');
+    else showActionToast('Could not set wallpaper.');
+  };
+
+  const handleRemoveWallpaper = async () => {
+    await clearWallpaper();
+    showActionToast('Wallpaper removed.');
+  };
+
   // Attachments: + button -> sheet (Gallery / Camera) -> photo DM mein jaati hai.
   const [attachOpen, setAttachOpen] = useState(false);
   const sendPickedPhoto = (uri?: string | null) => {
@@ -678,6 +720,9 @@ const DMChatWindow = ({
 
   useEffect(() => {
     if (dmTargetId) ensureRank(dmTargetId);
+    // Apna status bhi chahiye (wallpaper gate ke liye)
+    const myId = getMyId();
+    if (myId) ensureRank(myId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dmTargetId]);
 
@@ -751,6 +796,19 @@ const DMChatWindow = ({
     // Slide/animation ab parent (DMOverlayScreen -> ChatSlide) karta hai -
     // yahan koi fade/translate nahi, warna blink hota hai.
     <View style={[styles.screen, { zIndex, elevation: 20 }]}>
+      {/* Wallpaper: sirf tab dikhao jab abhi bhi verified ho (verification lapse -> default bg) */}
+      <WallpaperCropModal
+        source={wallpaperPending}
+        saving={wallpaperSaving}
+        onCancel={cancelWallpaperCrop}
+        onConfirm={handleWallpaperCropConfirm}
+      />
+      {!!wallpaper && iAmVerified !== false && (
+        <>
+          <ExpoImage source={{ uri: wallpaper }} style={StyleSheet.absoluteFill} contentFit="cover" />
+          <View style={styles.wallpaperDim} pointerEvents="none" />
+        </>
+      )}
       <View style={styles.flex}>
         {/* Header */}
         <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
@@ -806,6 +864,20 @@ const DMChatWindow = ({
               ref={kebabRef}
               hideButton
               items={[
+                {
+                  label: iAmVerified === false ? 'Change wallpaper (Verified only)' : 'Change wallpaper',
+                  icon: <Ionicons name={iAmVerified === false ? 'lock-closed-outline' : 'image-outline'} size={16} color="#ffffff" />,
+                  onClick: handleChangeWallpaper,
+                },
+                ...(wallpaper && iAmVerified !== false
+                  ? [
+                      {
+                        label: 'Remove wallpaper',
+                        icon: <Ionicons name="trash-outline" size={16} color="#ffffff" />,
+                        onClick: handleRemoveWallpaper,
+                      },
+                    ]
+                  : []),
                 {
                   label: 'Report user',
                   icon: <Ionicons name="warning-outline" size={16} color="#f87171" />,
@@ -1040,6 +1112,7 @@ const DMChatWindow = ({
 const styles = StyleSheet.create({
   screen: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#0a0a0a' },
   flex: { flex: 1 },
+  wallpaperDim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.35)' },
   fill: { width: '100%', height: '100%' },
   header: {
     paddingHorizontal: 12,

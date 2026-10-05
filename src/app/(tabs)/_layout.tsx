@@ -42,6 +42,7 @@ import { getCommunityBySlug } from '../../features/communities/services/communit
 import { showAlert } from '../../shared/utils/alertBus';
 import { subscribeOpenOverlay, requestOpenDMChat, subscribeOpenRoom } from '../../shared/utils/navOverlayBus';
 import { subscribeOpenQuickActions } from '../../shared/utils/quickActionsBus';
+import { requestFeedWallpaper } from '../../shared/utils/feedWallpaperBus';
 import { subscribeOpenStore, type StoreTabId } from '../../shared/utils/storeOpenBus';
 import { requestFeedScrollTopReload } from '../../shared/utils/feedScrollBus';
 import { subscribeOpenCommunity, requestOpenCommunityBySlug, requestOpenCommunityById } from '../../shared/utils/communityOpenBus';
@@ -323,17 +324,8 @@ export default function TabsLayout() {
   // RoomsStrip se kisi room par tap -> Rooms overlay khol do (join RoomsOverlayScreen khud karega).
   useEffect(() => subscribeOpenRoom(() => openRooms()), [openRooms]);
 
-  // App start hote hi sabse pehle Rooms overlay khol do (ek baar). Room bana
-  // hua hai to RoomsOverlayScreen ka auto-join user ko seedha apne room
-  // screen par le aata hai; room nahi hai to Rooms list dikhti hai. Ref
-  // guard isliye hai ki openRooms ki identity badalne par dobara na khule
-  // (user ne back dabake overlay band kiya ho to wapas zabardasti na aaye).
-  const startupRoomsOpenedRef = useRef(false);
-  useEffect(() => {
-    if (startupRoomsOpenedRef.current) return;
-    startupRoomsOpenedRef.current = true;
-    openRooms();
-  }, [openRooms]);
+  // App start par ab Feed (dashboard) hi khula rehta hai - Rooms overlay sirf
+  // BottomNav ke Rooms icon ya RoomsStrip par tap se khulta hai.
 
   // PostDetailModal jaisa true-fullscreen overlay khula ho to Header aur
   // BottomNav dono hide - post pura screen le, neeche sirf apna comment
@@ -599,6 +591,7 @@ export default function TabsLayout() {
         onClose={closeQuickActions}
         onComposeClick={handleComposeClick}
         onStoreClick={openStore}
+        onWallpaperClick={requestFeedWallpaper}
         onMissionsClick={openMissions}
         hasClaimableMission={hasClaimableMission}
         onRewardsClick={openDaily}

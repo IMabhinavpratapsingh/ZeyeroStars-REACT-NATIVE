@@ -30,13 +30,21 @@ const clamp = (v: number, min: number, max: number) => {
 
 interface Props {
   source: PickedSource | null;
+  /**
+   * Jis jagah wallpaper lagega uska width/height. Na do to poori screen
+   * (DM chat). Inbox jaisi chhoti jagah ke liye do - frame usi shape ka banta hai.
+   */
+  aspect?: number;
   saving?: boolean;
   onCancel: () => void;
   onConfirm: (region: CropRegion) => void;
 }
 
-const WallpaperCropModal = ({ source, saving = false, onCancel, onConfirm }: Props) => {
-  const { width: fw, height: fh } = useWindowDimensions();
+const WallpaperCropModal = ({ source, aspect, saving = false, onCancel, onConfirm }: Props) => {
+  const { width: winW, height: winH } = useWindowDimensions();
+  // Frame: width = screen width; height = aspect ke hisaab se (ya poori screen). Beech me center.
+  const fw = winW;
+  const fh = aspect && aspect > 0 ? Math.min(winH, winW / aspect) : winH;
   const insets = useSafeAreaInsets();
 
   const scale = useSharedValue(1); // 1 = "cover" fit; zoom iske upar multiply
@@ -113,7 +121,7 @@ const WallpaperCropModal = ({ source, saving = false, onCancel, onConfirm }: Pro
       <GestureHandlerRootView style={styles.root}>
         {source && (
           <GestureDetector gesture={gesture}>
-            <View style={styles.frame}>
+            <View style={[styles.frame, { width: fw, height: fh, top: (winH - fh) / 2 }]}>
               <Animated.View
                 style={[
                   { position: 'absolute', width: dw, height: dh, left: (fw - dw) / 2, top: (fh - dh) / 2 },
@@ -147,7 +155,7 @@ const WallpaperCropModal = ({ source, saving = false, onCancel, onConfirm }: Pro
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#000000' },
-  frame: { ...StyleSheet.absoluteFill, overflow: 'hidden' },
+  frame: { position: 'absolute', left: 0, overflow: 'hidden' },
   topBar: { position: 'absolute', top: 0, left: 0, right: 0, alignItems: 'center', paddingBottom: 10 },
   hint: {
     color: '#ffffff',

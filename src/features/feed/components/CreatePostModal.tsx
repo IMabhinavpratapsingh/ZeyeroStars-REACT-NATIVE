@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
+import { showAlert } from '../../../shared/utils/alertBus';
 import { Ionicons } from '@expo/vector-icons';
 import useBackButtonHandler from '../../../shared/hooks/useBackButtonHandler';
 import useTopZIndex from '../../../shared/hooks/useTopZIndex';
@@ -102,6 +103,27 @@ const CreatePostModal = ({
       onChangeImage?.(picked.assets[0].uri);
     } catch (err: any) {
       console.error('Post image pick error:', err?.message);
+    }
+  };
+
+  const handleTakePhoto = async () => {
+    if (posting) return;
+    try {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!perm.granted) {
+        showAlert('Camera permission is needed to take a photo.', 'info');
+        return;
+      }
+      const shot = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        quality: 1,
+      });
+      if (shot.canceled || !shot.assets?.[0]?.uri) return;
+      onChangeImage?.(shot.assets[0].uri);
+    } catch (err: any) {
+      console.error('Post camera error:', err?.message);
+      showAlert('Could not open the camera.');
     }
   };
 
@@ -260,14 +282,24 @@ const CreatePostModal = ({
               )}
             </View>
           ) : (
-            <Pressable
-              onPress={handlePickImage}
-              accessibilityLabel="Add photo"
-              style={({ pressed }) => [styles.addPhotoBtn, pressed && { opacity: 0.8 }]}
-            >
-              <Ionicons name="image-outline" size={16} color="#a1a1aa" />
-              <Text style={styles.addPhotoText}>Add Photo</Text>
-            </Pressable>
+            <View style={styles.addPhotoRow}>
+              <Pressable
+                onPress={handlePickImage}
+                accessibilityLabel="Choose photo from gallery"
+                style={({ pressed }) => [styles.addPhotoBtn, pressed && { opacity: 0.8 }]}
+              >
+                <Ionicons name="image-outline" size={16} color="#a1a1aa" />
+                <Text style={styles.addPhotoText}>Gallery</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleTakePhoto}
+                accessibilityLabel="Take photo with camera"
+                style={({ pressed }) => [styles.addPhotoBtn, pressed && { opacity: 0.8 }]}
+              >
+                <Ionicons name="camera-outline" size={16} color="#a1a1aa" />
+                <Text style={styles.addPhotoText}>Camera</Text>
+              </Pressable>
+            </View>
           )}
 
           <Pressable
@@ -398,8 +430,9 @@ const styles = StyleSheet.create({
     minHeight: 96,
     textAlignVertical: 'top',
   },
+  addPhotoRow: { marginTop: 12, flexDirection: 'row', gap: 10 },
   addPhotoBtn: {
-    marginTop: 12,
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

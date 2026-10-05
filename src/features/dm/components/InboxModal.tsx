@@ -24,6 +24,12 @@ import VerifiedBadge from '../../../shared/components/VerifiedBadge';
 import EliteBadge from '../../../shared/components/EliteBadge';
 import KebabMenu, { type KebabMenuHandle } from '../../../shared/components/KebabMenu';
 import { getActiveRooms } from '../../rooms/services/roomsApi';
+import { Image as ExpoImage } from 'expo-image';
+import showAlert from '../../../shared/utils/alertBus';
+import { getMyId } from '../../../shared/utils/auth';
+import { useInboxWallpaper } from '../services/dmWallpaper';
+import useMyVerified from '../services/useMyVerified';
+import WallpaperCropModal from './WallpaperCropModal';
 
 /**
  * Ek row alag, memoized component me - Instagram jaisa round pfp, naam ke
@@ -399,6 +405,56 @@ const InboxModal = ({
 }: InboxModalProps) => {
   const zIndex = useTopZIndex(show);
   const insets = useSafeAreaInsets();
+
+  // Custom Inbox wallpaper - sirf is phone me (AsyncStorage), sirf verified users.
+  const iAmVerified = useMyVerified(show);
+  const {
+    wallpaper,
+    pending: wpPending,
+    saving: wpSaving,
+    startPick: wpStartPick,
+    confirmCrop: wpConfirmCrop,
+    cancelCrop: wpCancelCrop,
+    clear: wpClear,
+  } = useInboxWallpaper(getMyId());
+  const wpMenuRef = useRef<KebabMenuHandle>(null);
+  // Inbox screen ka asli size - crop frame isi shape ka banta hai.
+  const [boxSize, setBoxSize] = useState<{ w: number; h: number } | null>(null);
+
+  const handleWallpaperBtn = async () => {
+    if (iAmVerified === undefined) {
+      showAlert('Checking your account, try again in a moment.', 'info');
+      return;
+    }
+    if (!iAmVerified) {
+      showAlert('Custom wallpaper is only for verified users.', 'info');
+      return;
+    }
+    if (wallpaper) {
+      wpMenuRef.current?.open(); // Change / Remove
+    } else {
+      const r = await wpStartPick();
+      if (r === 'error') showAlert('Could not open the image.');
+    }
+  };
+
+  const handleWallpaperChange = async () => {
+    const r = await wpStartPick();
+    if (r === 'error') showAlert('Could not open the image.');
+  };
+
+  const handleWallpaperRemove = async () => {
+    await wpClear();
+    showAlert('Wallpaper removed.', 'success');
+  };
+
+  const handleWallpaperCropConfirm = async (region: { originX: number; originY: number; width: number; height: number }) => {
+    const res = await wpConfirmCrop(region);
+    if (res.ok) showAlert('Wallpaper updated (saved on this device only).', 'success');
+    else if (res.reason === 'too_large') showAlert('Image is too large, try a different one.');
+    else showAlert('Could not set wallpaper.');
+  };
+
   // "primary" = normal accepted chats, "requests" = pending message
   // requests, "rooms" = active rooms (+ ZeyeroStars/is_team rooms),
   const [activeTab, setActiveTab] = useState<InboxTab>('primary');
@@ -494,7 +550,25 @@ const InboxModal = ({
             // upar ek extra khaali gap/"border" dikhta tha.
             { zIndex, elevation: 20, paddingTop: insets.top + 16, bottom: 0 },
           ]}
+          onLayout={(e) => {
+            const { width, height } = e.nativeEvent.layout;
+            setBoxSize((prev) => (prev && prev.w === width && prev.h === height ? prev : { w: width, h: height }));
+          }}
         >
+          {/* Wallpaper: sirf tab jab abhi bhi verified ho (verification lapse -> default bg) */}
+          {!!wallpaper && iAmVerified !== false && (
+            <>
+              <ExpoImage source={{ uri: wallpaper }} style={StyleSheet.absoluteFill} contentFit="cover" />
+              <View style={styles.wallpaperDim} pointerEvents="none" />
+            </>
+          )}
+          <WallpaperCropModal
+            source={wpPending}
+            aspect={boxSize ? boxSize.w / boxSize.h : undefined}
+            saving={wpSaving}
+            onCancel={wpCancelCrop}
+            onConfirm={handleWallpaperCropConfirm}
+          />
           <View style={styles.header}>
             <View style={styles.headerTopRow}>
               <View style={styles.headerIconBadge}>
@@ -509,6 +583,29 @@ const InboxModal = ({
                 <Text style={styles.headerTitle}>Messages</Text>
                 <Text style={styles.headerSubtitle}>Chat with your friends & communities</Text>
               </View>
+              <Pressable onPress={handleWallpaperBtn} style={styles.headerActionBtn} hitSlop={4}>
+                <Ionicons
+                  name={iAmVerified === false ? 'lock-closed-outline' : 'image-outline'}
+                  size={18}
+                  color="#d4d4d4"
+                />
+              </Pressable>
+              <KebabMenu
+                ref={wpMenuRef}
+                hideButton
+                items={[
+                  {
+                    label: 'Change wallpaper',
+                    icon: <Ionicons name="image-outline" size={16} color="#ffffff" />,
+                    onClick: handleWallpaperChange,
+                  },
+                  {
+                    label: 'Remove wallpaper',
+                    icon: <Ionicons name="trash-outline" size={16} color="#ffffff" />,
+                    onClick: handleWallpaperRemove,
+                  },
+                ]}
+              />
               <Pressable onPress={onCompose} style={styles.headerActionBtn}>
                 <Ionicons name="create-outline" size={18} color="#d4d4d4" />
               </Pressable>
@@ -727,6 +824,7 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, color: '#ffffff', fontSize: 14, padding: 0 },
   listContent: { padding: 16, gap: 10 },
+  wallpaperDim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.45)' },
   emptyText: { color: '#6e6e6e', textAlign: 'center', marginTop: 40 },
   skeletonCard: { backgroundColor: '#0a0a0a', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#161616', marginBottom: 10 },
   skeletonLineWide: { height: 16, borderRadius: 8, backgroundColor: '#161616', width: '33%', marginBottom: 8 },

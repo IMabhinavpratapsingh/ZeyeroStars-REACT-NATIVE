@@ -74,6 +74,7 @@ interface QuickActionsSheetProps {
   onAdRewardCredited?: (newZMoney: number, zMoneyEarned: number) => void;
   onCommunitiesClick?: () => void;
   onStoreClick?: () => void;
+  onWallpaperClick?: () => void;
 }
 
 const SHEET_OFFSCREEN = 800; // sheet ki height se hamesha zyada
@@ -92,6 +93,7 @@ const QuickActionsSheet = ({
   onAdRewardCredited,
   onCommunitiesClick,
   onStoreClick,
+  onWallpaperClick,
 }: QuickActionsSheetProps) => {
   const insets = useSafeAreaInsets();
   const { width: screenW } = useWindowDimensions();
@@ -238,6 +240,7 @@ const QuickActionsSheet = ({
             <SheetTile width={tileW} icon="locate-outline" label="Missions" onPress={runAndClose(onMissionsClick)} redDot={hasClaimableMission} />
             <SheetTile width={tileW} icon="gift-outline" label="Daily" onPress={runAndClose(onRewardsClick)} />
             <SheetTile width={tileW} icon="trophy-outline" label="Leaderboard" onPress={runAndClose(onLeaderboardClick)} />
+            <SheetTile width={tileW} icon="image-outline" label="Wallpaper" onPress={runAndClose(onWallpaperClick)} />
             <SheetTile width={tileW} icon="settings-outline" label="Settings" onPress={runAndClose(onSettingsClick)} />
           </View>
         </MotiView>

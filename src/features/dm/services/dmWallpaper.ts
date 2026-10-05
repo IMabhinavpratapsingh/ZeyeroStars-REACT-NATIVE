@@ -7,9 +7,12 @@ import * as ImageManipulator from 'expo-image-manipulator';
  * DM custom wallpaper - SIRF is phone ke AsyncStorage me save hota hai.
  * Backend pe kuch upload/save nahi hota, dusre user ko wallpaper dikhta nahi.
  *
- * Key: dm_wallpaper_v1:<myId>:<partnerId>
- *  -> har chat ka apna wallpaper, aur account badalne par purana wallpaper
- *     dusre account ko nahi dikhta (myId key me hai).
+ * Keys:
+ *   dm_wallpaper_v1:<myId>:<partnerId>  -> har DM chat ka apna wallpaper
+ *   inbox_wallpaper_v1:<myId>           -> Inbox (Messages list) screen ka wallpaper
+ *   feed_wallpaper_v1:<myId>            -> Feed tab ka wallpaper
+ *  myId har key me hai, isliye account badalne par purana wallpaper dusre
+ *  account ko nahi dikhta.
  *
  * FLOW (WhatsApp jaisa):
  *   1. startPick()   -> gallery se image chuno, EXIF rotation bake + size cap
@@ -29,8 +32,10 @@ const OUT_WIDTH = 1080; // final saved wallpaper ki width
 const QUALITY = 0.55;
 const MAX_BYTES = 1_200_000; // base64 string length cap
 
-const keyFor = (myId: string | number, partnerId: string | number) =>
+const dmKey = (myId: string | number, partnerId: string | number) =>
   `${KEY_PREFIX}:${myId}:${partnerId}`;
+const inboxKey = (myId: string | number) => `inbox_wallpaper_v1:${myId}`;
+const feedKey = (myId: string | number) => `feed_wallpaper_v1:${myId}`;
 
 export interface PickedSource {
   uri: string;
@@ -49,21 +54,18 @@ export type SaveResult =
   | { ok: true; dataUri: string }
   | { ok: false; reason: 'too_large' | 'error' };
 
-export async function loadWallpaper(
-  myId: string | number | null | undefined,
-  partnerId: string | number | null | undefined
-): Promise<string | null> {
-  if (myId == null || partnerId == null) return null;
+async function loadByKey(key: string | null): Promise<string | null> {
+  if (!key) return null;
   try {
-    return await AsyncStorage.getItem(keyFor(myId, partnerId));
+    return await AsyncStorage.getItem(key);
   } catch {
     return null;
   }
 }
 
-export async function removeWallpaper(myId: string | number, partnerId: string | number) {
+async function removeByKey(key: string) {
   try {
-    await AsyncStorage.removeItem(keyFor(myId, partnerId));
+    await AsyncStorage.removeItem(key);
   } catch {
     // ignore
   }
@@ -90,8 +92,7 @@ async function pickSource(): Promise<PickedSource | null> {
 }
 
 async function saveCropped(
-  myId: string | number,
-  partnerId: string | number,
+  key: string,
   source: PickedSource,
   region: CropRegion
 ): Promise<SaveResult> {
@@ -104,7 +105,7 @@ async function saveCropped(
     if (!out.base64) return { ok: false, reason: 'error' };
     if (out.base64.length > MAX_BYTES) return { ok: false, reason: 'too_large' };
     const dataUri = `data:image/jpeg;base64,${out.base64}`;
-    await AsyncStorage.setItem(keyFor(myId, partnerId), dataUri);
+    await AsyncStorage.setItem(key, dataUri);
     return { ok: true, dataUri };
   } catch (e) {
     console.error('saveCropped wallpaper error:', e);
@@ -112,11 +113,11 @@ async function saveCropped(
   }
 }
 
-/** Chat window ke liye: current wallpaper + pick/crop/remove helpers. */
-export default function useDMWallpaper(
-  myId: string | number | null | undefined,
-  partnerId: string | number | null | undefined
-) {
+/**
+ * Generic wallpaper hook - `storageKey` null ho to kuch nahi karta.
+ * (DM chat aur Inbox dono isi se bane hain.)
+ */
+export function useWallpaper(storageKey: string | null) {
   const [wallpaper, setWallpaper] = useState<string | null>(null);
   const [pending, setPending] = useState<PickedSource | null>(null); // crop screen ka source
   const [saving, setSaving] = useState(false);
@@ -125,13 +126,13 @@ export default function useDMWallpaper(
     let cancelled = false;
     setWallpaper(null);
     setPending(null);
-    loadWallpaper(myId, partnerId).then((v) => {
+    loadByKey(storageKey).then((v) => {
       if (!cancelled) setWallpaper(v);
     });
     return () => {
       cancelled = true;
     };
-  }, [myId, partnerId]);
+  }, [storageKey]);
 
   /** Gallery kholo; image mili to `pending` set hota hai (crop modal khulta hai). */
   const startPick = useCallback(async (): Promise<'picked' | 'cancelled' | 'error'> => {
@@ -148,9 +149,9 @@ export default function useDMWallpaper(
 
   const confirmCrop = useCallback(
     async (region: CropRegion): Promise<SaveResult> => {
-      if (!pending || myId == null || partnerId == null) return { ok: false, reason: 'error' };
+      if (!pending || !storageKey) return { ok: false, reason: 'error' };
       setSaving(true);
-      const res = await saveCropped(myId, partnerId, pending, region);
+      const res = await saveCropped(storageKey, pending, region);
       setSaving(false);
       if (res.ok) {
         setWallpaper(res.dataUri);
@@ -158,16 +159,34 @@ export default function useDMWallpaper(
       }
       return res;
     },
-    [pending, myId, partnerId]
+    [pending, storageKey]
   );
 
   const cancelCrop = useCallback(() => setPending(null), []);
 
   const clear = useCallback(async () => {
-    if (myId == null || partnerId == null) return;
-    await removeWallpaper(myId, partnerId);
+    if (!storageKey) return;
+    await removeByKey(storageKey);
     setWallpaper(null);
-  }, [myId, partnerId]);
+  }, [storageKey]);
 
   return { wallpaper, pending, saving, startPick, confirmCrop, cancelCrop, clear };
+}
+
+/** DM chat window ke liye (har partner ka alag wallpaper). */
+export default function useDMWallpaper(
+  myId: string | number | null | undefined,
+  partnerId: string | number | null | undefined
+) {
+  return useWallpaper(myId != null && partnerId != null ? dmKey(myId, partnerId) : null);
+}
+
+/** Inbox (Messages list) screen ke liye - ek hi wallpaper. */
+export function useInboxWallpaper(myId: string | number | null | undefined) {
+  return useWallpaper(myId != null ? inboxKey(myId) : null);
+}
+
+/** Feed tab ke liye - ek hi wallpaper. */
+export function useFeedWallpaper(myId: string | number | null | undefined) {
+  return useWallpaper(myId != null ? feedKey(myId) : null);
 }

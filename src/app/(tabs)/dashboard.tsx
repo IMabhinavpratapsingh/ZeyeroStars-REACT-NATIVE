@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, View, type FlatList } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { Image as ExpoImage } from 'expo-image';
+import { Ionicons } from '@expo/vector-icons';
 
 import RoomsStrip from '../../features/feed/components/RoomsStrip';
 import FeedList from '../../features/feed/components/FeedList';
@@ -20,6 +22,12 @@ import { subscribeFeedScrollTopReload } from '../../shared/utils/feedScrollBus';
 import { requestOpenCommunityById, requestOpenCommunityBySlug } from '../../shared/utils/communityOpenBus';
 import { requestOpenProfile } from '../../shared/utils/profileOpenBus';
 import { setFullscreenOverlayOpen } from '../../shared/utils/fullscreenOverlayBus';
+import KebabMenu, { type KebabMenuHandle } from '../../shared/components/KebabMenu';
+import { getMyId } from '../../shared/utils/auth';
+import { subscribeFeedWallpaper } from '../../shared/utils/feedWallpaperBus';
+import { useFeedWallpaper } from '../../features/dm/services/dmWallpaper';
+import useMyVerified from '../../features/dm/services/useMyVerified';
+import WallpaperCropModal from '../../features/dm/components/WallpaperCropModal';
 
 // WEB -> RN: Home ka body (RoomsStrip + FeedList + post modals). Header/
 // BottomNav/QuickActionsSheet ab (tabs)/_layout.tsx ke persistent shell
@@ -43,6 +51,78 @@ export default function DashboardScreen() {
     }>();
 
   const { fetchBalance } = useDashboardBalance();
+
+  // Custom Feed wallpaper - sirf is phone me (AsyncStorage), sirf verified users.
+  // QuickActionsSheet ka "Wallpaper" tile feedWallpaperBus se yahan aata hai.
+  const [focused, setFocused] = useState(false);
+  useFocusEffect(
+    useCallback(() => {
+      setFocused(true);
+      return () => setFocused(false);
+    }, [])
+  );
+  const iAmVerified = useMyVerified(focused);
+  const {
+    wallpaper,
+    pending: wpPending,
+    saving: wpSaving,
+    startPick: wpStartPick,
+    confirmCrop: wpConfirmCrop,
+    cancelCrop: wpCancelCrop,
+    clear: wpClear,
+  } = useFeedWallpaper(getMyId());
+  const wpMenuRef = useRef<KebabMenuHandle>(null);
+  // Feed screen ka asli size - crop frame isi shape ka banta hai.
+  const [boxSize, setBoxSize] = useState<{ w: number; h: number } | null>(null);
+
+  const handleWallpaperChange = async () => {
+    const r = await wpStartPick();
+    if (r === 'error') showAlert('Could not open the image.');
+  };
+
+  const handleWallpaperRemove = async () => {
+    await wpClear();
+    showAlert('Wallpaper removed.', 'success');
+  };
+
+  const handleWallpaperAction = async () => {
+    if (iAmVerified === undefined) {
+      showAlert('Checking your account, try again in a moment.', 'info');
+      return;
+    }
+    if (!iAmVerified) {
+      showAlert('Custom wallpaper is only for verified users.', 'info');
+      return;
+    }
+    if (wallpaper) {
+      wpMenuRef.current?.open(); // Change / Remove
+    } else {
+      await handleWallpaperChange();
+    }
+  };
+
+  const handleWallpaperCropConfirm = async (region: { originX: number; originY: number; width: number; height: number }) => {
+    const res = await wpConfirmCrop(region);
+    if (res.ok) showAlert('Wallpaper updated (saved on this device only).', 'success');
+    else if (res.reason === 'too_large') showAlert('Image is too large, try a different one.');
+    else showAlert('Could not set wallpaper.');
+  };
+
+  // Subscribe sirf ek baar; latest handler ref se (stale closure nahi). Sheet ki close
+  // animation (~280ms) khatam hone ke baad hi picker/menu kholte hain - do Modal ek saath nahi.
+  const wpActionRef = useRef(handleWallpaperAction);
+  wpActionRef.current = handleWallpaperAction;
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | null = null;
+    const unsub = subscribeFeedWallpaper(() => {
+      if (t) clearTimeout(t);
+      t = setTimeout(() => wpActionRef.current(), 350);
+    });
+    return () => {
+      unsub();
+      if (t) clearTimeout(t);
+    };
+  }, []);
   const {
     posts,
     loading,
@@ -209,7 +289,43 @@ export default function DashboardScreen() {
   }, [openedPost]);
 
   return (
-    <View style={styles.screen}>
+    <View
+      style={styles.screen}
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout;
+        setBoxSize((prev) => (prev && prev.w === width && prev.h === height ? prev : { w: width, h: height }));
+      }}
+    >
+      {/* Wallpaper: sirf tab jab abhi bhi verified ho (verification lapse -> default bg) */}
+      {!!wallpaper && iAmVerified !== false && (
+        <>
+          <ExpoImage source={{ uri: wallpaper }} style={StyleSheet.absoluteFill} contentFit="cover" />
+          <View style={styles.wallpaperDim} pointerEvents="none" />
+        </>
+      )}
+      <WallpaperCropModal
+        source={wpPending}
+        aspect={boxSize ? boxSize.w / boxSize.h : undefined}
+        saving={wpSaving}
+        onCancel={wpCancelCrop}
+        onConfirm={handleWallpaperCropConfirm}
+      />
+      <KebabMenu
+        ref={wpMenuRef}
+        hideButton
+        items={[
+          {
+            label: 'Change wallpaper',
+            icon: <Ionicons name="image-outline" size={16} color="#ffffff" />,
+            onClick: handleWallpaperChange,
+          },
+          {
+            label: 'Remove wallpaper',
+            icon: <Ionicons name="trash-outline" size={16} color="#ffffff" />,
+            onClick: handleWallpaperRemove,
+          },
+        ]}
+      />
       <FeedList
         adEvery={4}
         listRef={feedListRef}
@@ -293,4 +409,5 @@ export default function DashboardScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#000000' },
+  wallpaperDim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.45)' },
 });

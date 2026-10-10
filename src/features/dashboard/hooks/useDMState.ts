@@ -18,6 +18,7 @@ import {
   clearCachedMessages,
   type CachedDMMessage,
 } from '../../dm/services/dmMessagesCache';
+import { photoKeyOf } from '../../dm/utils/photoKey';
 import type { InboxRow, UseInboxStateReturn } from './useInboxState';
 
 const DM_PAGE_SIZE = 20; // scroll-up (older) pagination
@@ -42,7 +43,7 @@ const normalizeDMHistoryMessage = (m: any): CachedDMMessage => ({
 // messages jodo. Mera apna bheja hua jo message abhi id-less (pending / "Not sent") hai aur
 // server par pahunch chuka hai, use duplicate bubble banane ki jagah usi bubble par id lagao.
 const sameBody = (a: any, b: any) =>
-  b.is_photo ? a.is_photo === b.is_photo : !a.is_photo && String(a.content ?? '').trim() === String(b.content ?? '').trim();
+  b.is_photo ? photoKeyOf(a.is_photo) === photoKeyOf(b.is_photo) : !a.is_photo && String(a.content ?? '').trim() === String(b.content ?? '').trim();
 
 const mergeFetched = (
   list: CachedDMMessage[],
@@ -74,15 +75,16 @@ const mergeFetched = (
   return out;
 };
 
-// Photo message: content khaali, `is_photo` mein photo ka URL. Inbox/notification/
+// Photo message: content khaali, `is_photo` mein photo ka (signed) URL - signed URL har
+// baar badalta hai, isliye compare hamesha photoKeyOf() se (stable key). Inbox/notification/
 // reply-preview mein text ki jagah yeh label dikhta hai.
 const PHOTO_PREVIEW = '📷 Photo';
 const isRemoteUrl = (u: any) => typeof u === 'string' && /^https?:\/\//i.test(u);
 
 // Server ack / blocked / request-pending event ko apne pending (id-less) bubble se
-// match karo: photo ho to URL se, warna text se.
+// match karo: photo ho to photo key se, warna text se.
 const matchesPending = (m: any, data: any) =>
-  !m.id && (data.is_photo ? m.is_photo === data.is_photo : !m.is_photo && m.content === data.content);
+  !m.id && (data.is_photo ? photoKeyOf(m.is_photo) === photoKeyOf(data.is_photo) : !m.is_photo && m.content === data.content);
 
 export type DMUser = {
   id?: string | number;
@@ -230,7 +232,7 @@ export default function useDMState({
   };
 
   const verifyDelivery = useCallback(
-    async (targetId: string | number, cid: string, content: string, replyingTo: string | number | null, attempt: number, photoUrl: string | null = null) => {
+    async (targetId: string | number, cid: string, content: string, replyingTo: string | number | null, attempt: number, photoKey: string | null = null) => {
       const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
       await sleep(5000);
       if (!isStillPending(targetId, cid)) return;
@@ -257,7 +259,7 @@ export default function useDMState({
           .map(normalizeDMHistoryMessage)
           .find((m: any) =>
             String(m.sender_id) === String(getMyId()) &&
-            (photoUrl ? m.is_photo === photoUrl : !m.is_photo && String(m.content).trim() === content.trim())
+            (photoKey ? photoKeyOf(m.is_photo) === photoKey : !m.is_photo && String(m.content).trim() === content.trim())
           );
         if (mine) {
           delivered = true;
@@ -280,17 +282,17 @@ export default function useDMState({
           type: 'dm',
           client_id: cid,
           target_id: targetId,
-          ...(photoUrl ? { photo_url: photoUrl } : { message: content }),
+          ...(photoKey ? { photo_key: photoKey } : { message: content }),
           ...(replyingTo ? { replying_to: replyingTo } : {}),
         });
       }
-      verifyDelivery(targetId, cid, content, replyingTo, attempt + 1, photoUrl);
+      verifyDelivery(targetId, cid, content, replyingTo, attempt + 1, photoKey);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [patchPendingMessage]
   );
 
-  /** Photo: compress -> POST /ws/dm/upload-photo (dm-photos/ folder) -> ws "dm" with photo_url. */
+  /** Photo: compress -> POST /ws/dm/upload-photo (private bucket) -> ws "dm" with photo_key. */
   const uploadAndSendPhoto = useCallback(
     async (targetId: string | number, cid: string, localUri: string, replyingTo: string | number | null) => {
       try {
@@ -301,18 +303,19 @@ export default function useDMState({
         const res = await axios.post(`${API_BASE}/ws/dm/upload-photo`, form, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
-        const url = res.data?.photo_url;
-        if (!url) throw new Error('No photo_url in response');
+        const key = res.data?.photo_key;
+        const url = res.data?.photo_url; // signed, sirf bubble preview ke liye
+        if (!key || !url) throw new Error('No photo_key in response');
 
         patchPendingMessage(targetId, cid, { is_photo: url, uploading: false });
         networkManager.sendOrQueue({
           type: 'dm',
           client_id: cid,
           target_id: targetId,
-          photo_url: url,
+          photo_key: key, // server ko hamesha KEY bhejo, signed URL nahi
           ...(replyingTo ? { replying_to: replyingTo } : {}),
         });
-        verifyDelivery(targetId, cid, '', replyingTo, 0, url);
+        verifyDelivery(targetId, cid, '', replyingTo, 0, key);
       } catch (err: any) {
         console.error('DM photo upload error:', err?.response?.data || err?.message);
         patchPendingMessage(targetId, cid, { failed: true, uploading: false });
@@ -337,15 +340,17 @@ export default function useDMState({
           uploadAndSendPhoto(targetId, msg._cid, msg._localUri, msg.replying_to ?? null);
           return;
         }
+        // Signed URL expire ho sakta hai - resend hamesha key se (URL se nikaali hui).
+        const photoKey = photoKeyOf(msg.is_photo);
         patchPendingMessage(targetId, msg._cid, { failed: false });
         networkManager.sendOrQueue({
           type: 'dm',
           client_id: msg._cid,
           target_id: targetId,
-          photo_url: msg.is_photo,
+          photo_key: photoKey,
           ...(msg.replying_to ? { replying_to: msg.replying_to } : {}),
         });
-        verifyDelivery(targetId, msg._cid, '', msg.replying_to ?? null, 1, msg.is_photo);
+        verifyDelivery(targetId, msg._cid, '', msg.replying_to ?? null, 1, photoKey);
         return;
       }
 

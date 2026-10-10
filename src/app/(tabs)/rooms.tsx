@@ -37,7 +37,7 @@ import LoadingOverlay from '../../shared/components/LoadingOverlay';
 // "my profile" hook abhi nahi hai. onViewProfile/onTip abhi "coming soon"
 // hain (ProfileViewModal/TipModal wiring alag pass) - dm.tsx mein tip bhi
 // isi tarah stub hai. onOpenSettings/onOpenCommunity optional hain, is pass
-// mein pass nahi kiye (community rooms is app se nikal diye gaye hain).
+// mein pass nahi kiye.
 //
 // IMPORTANT GAP (ye is file ke scope se bahar hai): poori app mein kahin
 // bhi `networkManager.connect()` call nahi hota (login.tsx ke baad na hi

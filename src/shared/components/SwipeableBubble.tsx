@@ -1,4 +1,4 @@
-import React, { memo, type ReactNode } from 'react';
+import React, { memo, useMemo, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -41,21 +41,35 @@ const SwipeableBubble = ({ children, align, onReply, replyIcon }: SwipeableBubbl
   const iconOpacity = useSharedValue(0);
   const isEnd = align === 'end';
 
-  const pan = Gesture.Pan()
-    .onUpdate((e) => {
-      const clamped = isEnd ? Math.min(0, e.translationX) : Math.max(0, e.translationX);
-      const offset = Math.max(Math.min(clamped, MAX_DRAG), -MAX_DRAG);
-      translateX.value = offset;
-      iconOpacity.value = Math.min(Math.abs(offset) / THRESHOLD, 1);
-    })
-    .onEnd(() => {
-      const offset = translateX.value;
-      translateX.value = withTiming(0, { duration: 200 });
-      iconOpacity.value = withTiming(0, { duration: 200 });
-      if (Math.abs(offset) >= THRESHOLD) {
-        runOnJS(onReply)();
-      }
-    });
+  // IMPORTANT (scroll fix): Pan ko sirf HORIZONTAL drag par activate hona
+  // chahiye. Pehle koi offset nahi tha, isliye bubble par ungli rakh ke
+  // vertical scroll karne par bhi Pan jeet jaata tha aur FlatList/ScrollView
+  // ka scroll cancel ho jaata tha (chat "scroll nahi ho raha").
+  //  - activeOffsetX: sirf reply-wali direction mein ~12px horizontal drag
+  //    par activate.
+  //  - failOffsetX: ulti direction mein drag => fail (scroll/parent ko do).
+  //  - failOffsetY: ~12px vertical drag => fail, list scroll ho jaaye.
+  // useMemo: gesture har render par dobara na bane (onReply stable hona
+  // chahiye - caller useCallback de).
+  const pan = useMemo(() => {
+    const g = Gesture.Pan()
+      .failOffsetY([-12, 12])
+      .onUpdate((e) => {
+        const clamped = isEnd ? Math.min(0, e.translationX) : Math.max(0, e.translationX);
+        const offset = Math.max(Math.min(clamped, MAX_DRAG), -MAX_DRAG);
+        translateX.value = offset;
+        iconOpacity.value = Math.min(Math.abs(offset) / THRESHOLD, 1);
+      })
+      .onEnd(() => {
+        const offset = translateX.value;
+        translateX.value = withTiming(0, { duration: 200 });
+        iconOpacity.value = withTiming(0, { duration: 200 });
+        if (Math.abs(offset) >= THRESHOLD) {
+          runOnJS(onReply)();
+        }
+      });
+    return isEnd ? g.activeOffsetX(-12).failOffsetX(12) : g.activeOffsetX(12).failOffsetX(-12);
+  }, [isEnd, onReply, translateX, iconOpacity]);
 
   const bubbleStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }],

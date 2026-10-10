@@ -38,6 +38,7 @@ import networkManager from '../../../shared/services/NetworkManager';
 import { renderWithMentions } from '../../../shared/utils/renderMentions';
 import useDMWallpaper from '../services/dmWallpaper';
 import WallpaperCropModal from './WallpaperCropModal';
+import { photoCacheKey } from '../utils/photoKey';
 
 /**
  * DM chat window (1-on-1). Trade yahin ke andar hoti hai (header ka
@@ -258,7 +259,7 @@ const DMMessageBubble = memo(
                     {isPhoto && (
                       <Pressable onPress={() => !msg.uploading && setPhotoViewer(true)} style={styles.photoWrap}>
                         <ExpoImage
-                          source={{ uri: msg.is_photo }}
+                          source={{ uri: msg.is_photo, cacheKey: photoCacheKey(msg.is_photo) }}
                           style={styles.photoImg}
                           contentFit="cover"
                           transition={120}
@@ -322,7 +323,7 @@ const DMMessageBubble = memo(
               {isPhoto && (
                 <Modal visible={photoViewer} transparent animationType="fade" onRequestClose={() => setPhotoViewer(false)} statusBarTranslucent>
                   <Pressable style={styles.viewerBg} onPress={() => setPhotoViewer(false)}>
-                    <ExpoImage source={{ uri: msg.is_photo }} style={styles.viewerImg} contentFit="contain" />
+                    <ExpoImage source={{ uri: msg.is_photo, cacheKey: photoCacheKey(msg.is_photo) }} style={styles.viewerImg} contentFit="contain" cachePolicy="memory-disk" />
                     <Pressable style={styles.viewerClose} onPress={() => setPhotoViewer(false)} hitSlop={12}>
                       <Ionicons name="close" size={24} color="#ffffff" />
                     </Pressable>

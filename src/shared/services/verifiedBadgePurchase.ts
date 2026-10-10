@@ -107,16 +107,34 @@ export function initVerifiedBadgeStore(): Promise<void> {
         if (Z_MONEY_PRODUCT_IDS.includes(productId)) {
           verifyZMoneyPurchase(productId, token)
             .then(async (res) => {
+              const data: any = res.data;
+
+              // Backend ne credit nahi kiya (aur pehle bhi nahi hua tha) -
+              // consume MAT karo, warna paisa gaya aur coins nahi mile.
+              // Unfinished purchase app restart pe dobara aayegi (retry).
+              if (!data?.success && !data?.already_processed) {
+                onZMoneyErrorCallback?.(data?.message || 'Verification failed, try again.');
+                return;
+              }
+
               // CONSUMABLE - finish/consume turant karo taaki user dobara
               // khareed sake. Consume fail hua to item Play Store ke paas
               // "owned" hi reh jaata hai aur agli purchase "already
               // purchased" bolke reject ho jaati hai.
               try {
                 await finishTransaction({ purchase, isConsumable: true });
-                onZMoneySuccessCallback?.(res.data);
               } catch (finishErr) {
                 console.error('[zMoneyPurchase] finishTransaction FAILED - item Play ke paas owned reh gaya:', finishErr);
                 onZMoneyErrorCallback?.('Item credited but not consumed - restart the app to retry consuming it.');
+                return;
+              }
+
+              if (data?.success) {
+                onZMoneySuccessCallback?.(data);
+              } else {
+                // already_processed: coins pehle hi mil chuke hain (retry ya
+                // purani purchase) - error nahi, bas info.
+                onZMoneyErrorCallback?.('This purchase was already processed - your balance is up to date.');
               }
             })
             .catch((err) => {
@@ -130,6 +148,8 @@ export function initVerifiedBadgeStore(): Promise<void> {
           .then(async (res) => {
             try {
               await finishTransaction({ purchase, isConsumable: false });
+              // already_processed (retry / app restart pe dobara aayi purchase):
+              // badge pehle hi active hai - finish karke chup-chaap success.
               onSuccessCallback?.(res.data);
             } catch (finishErr) {
               console.error('[verifiedBadgePurchase] finishTransaction FAILED:', finishErr);

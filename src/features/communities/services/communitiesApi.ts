@@ -60,11 +60,6 @@ export const listCommunities = (offset = 0, limit = 20, category: string | null 
     params: { offset, limit, category: category || undefined },
   });
 
-// Inbox "Community Rooms" tab - server-side hi active (live room mein
-// kam se kam 1 member) communities filter karke deta hai, poori list
-// bhej ke client-side filter nahi karna padta.
-export const listActiveCommunityRooms = () => axios.get(`${API_BASE}/communities/rooms/active`, authConfig());
-
 // Communities the current user has already joined - used to populate
 // the "New Post" composer's community picker as soon as the app loads
 // (not just ones joined live during this session).
@@ -108,41 +103,7 @@ export const promoteToMod = (communityId: Id, targetUserId: Id) =>
 export const demoteMod = (communityId: Id, targetUserId: Id) =>
   axios.post(`${API_BASE}/communities/${communityId}/demote/${targetUserId}`, {}, authConfig());
 
-// === Community room ===
-export const getCommunityRoom = (communityId: Id) =>
-  axios.get(`${API_BASE}/communities/${communityId}/room`, authConfig());
 
-export const setCommunityRadio = (communityId: Id, radioName: string, radioUrl: string) =>
-  axios.post(
-    `${API_BASE}/communities/${communityId}/room/radio`,
-    { radio_name: radioName, radio_url: radioUrl },
-    authConfig()
-  );
-
-// Same "upload -> get URL -> set" two-step flow as room/community icons.
-export const uploadCommunityRoomIcon = (communityId: Id, file: UploadFile) =>
-  axios.post(`${API_BASE}/communities/${communityId}/room/icon/upload`, buildFormData(file), authConfig());
-
-export const updateCommunityRoomIcon = (communityId: Id, iconUrl: string) =>
-  axios.post(`${API_BASE}/communities/${communityId}/room/icon/update`, { icon_url: iconUrl }, authConfig());
-
-export const uploadCommunityRoomBackground = (communityId: Id, file: UploadFile) =>
-  axios.post(`${API_BASE}/communities/${communityId}/room/background/upload`, buildFormData(file), authConfig());
-
-export const updateCommunityRoomBackground = (communityId: Id, bgUrl: string) =>
-  axios.post(`${API_BASE}/communities/${communityId}/room/background/update`, { bg_url: bgUrl }, authConfig());
-
-export const updateCommunityRoomChatOnly = (communityId: Id, chatOnly: boolean) =>
-  axios.post(`${API_BASE}/communities/${communityId}/room/chat-only/update`, { chat_only: chatOnly }, authConfig());
-
-export const getCommunityRoomBanned = (communityId: Id) =>
-  axios.get(`${API_BASE}/communities/${communityId}/room/banned`, authConfig());
-
-export const banFromCommunityRoom = (communityId: Id, targetUserId: Id) =>
-  axios.post(`${API_BASE}/communities/${communityId}/room/ban/${targetUserId}`, {}, authConfig());
-
-export const unbanFromCommunityRoom = (communityId: Id, targetUserId: Id) =>
-  axios.post(`${API_BASE}/communities/${communityId}/room/unban/${targetUserId}`, {}, authConfig());
 // === Cached resources (feed/inbox jaisa hi AsyncStorage-backed cache) ===
 // CommunityListScreen har baar khulne par purana data turant dikhata hai
 // (agar hydrate ho chuka hai), background me silently revalidate hota hai.

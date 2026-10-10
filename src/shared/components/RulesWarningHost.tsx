@@ -10,8 +10,8 @@ import {
 import { Easing } from 'react-native-reanimated';
 
 /**
- * Room join, World Chat join, Community join, ya Community Room join -
- * in char jagah se `showRulesWarning(context)` call hota hai. Root
+ * Room join, World Chat join, ya Community join -
+ * in teen jagah se `showRulesWarning(context)` call hota hai. Root
  * _layout.tsx mein EK baar mount karo (ConfirmPopupHost jaisa hi).
  *
  * WEB -> RN CHANGES:
@@ -28,7 +28,6 @@ const CONTEXT_LABELS: Record<string, string> = {
   room: 'this Room',
   'world chat': 'World Chat',
   community: 'this Community',
-  'community room': 'this Community Room',
 };
 
 const RulesWarningHost = () => {

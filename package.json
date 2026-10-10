@@ -10,6 +10,7 @@
     "chess.js": "^1.0.0-beta.8",
     "expo": "~57.0.24",
     "expo-audio": "~57.0.5",
+    "expo-build-properties": "~57.0.22",
     "expo-clipboard": "~57.0.2",
     "expo-constants": "~57.0.19",
     "expo-device": "~57.0.2",

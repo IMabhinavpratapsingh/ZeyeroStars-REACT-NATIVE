@@ -21,23 +21,16 @@ import {
   getMemberProfilePatch,
   subscribeMemberProfileUpdates,
 } from '../services/roomFloorBus';
-import CurrencyIcon from '../../../shared/components/CurrencyIcon';
-import SwipeableBubble from '../../../shared/components/SwipeableBubble';
-import VerifiedBadge from '../../../shared/components/VerifiedBadge';
-import EliteBadge from '../../../shared/components/EliteBadge';
-import AvatarLayers from '../../avatar/components/AvatarLayers';
 import RoomFloorView, { type RoomFloorViewHandle } from './RoomFloorView';
 import RoomChessPanel from './RoomChessPanel';
 import RoomRadioModal, { type RadioStation } from './RoomRadioModal';
 import EditRoomModal from './EditRoomModal';
 import RoomInputOverlay from './RoomInputOverlay';
+import RoomChatLog from './RoomChatLog';
 import useRankCache from '../../../shared/hooks/useRankCache';
 import useItemsCatalog from '../../../shared/hooks/useItemsCatalog';
 import useBackButtonHandler from '../../../shared/hooks/useBackButtonHandler';
 import useTopZIndex from '../../../shared/hooks/useTopZIndex';
-import { renderWithMentions } from '../../../shared/utils/renderMentions';
-import { getEquippedByCategory as buildEquippedByCategory } from '../../../shared/utils/profileHelpers';
-import { AVATAR_ASPECT_RATIO_NUM } from '../../avatar/utils/avatarAssets';
 import networkManager from '../../../shared/services/NetworkManager';
 import { toggleRadioMuted, useRadioMuted } from '../services/radioMute';
 
@@ -64,11 +57,16 @@ import { toggleRadioMuted, useRadioMuted } from '../services/radioMute';
  *   pieces, web jaisa hi istemal.
  * - Long-press (bubble par) -> reply/profile/tip mini-menu, single tap
  *   ki jagah (mobile par long-press hi "options" ka natural gesture hai).
+ *
+ * PERF/MOUNT NOTE: chat-log ab alag RoomChatLog (virtualized FlatList) hai
+ * aur info-drawer bhi - dono PEHLI baar khulne par mount hote hain, uske
+ * baad sirf hide/unhide (display: none) hota hai, unmount nahi. Floor ke
+ * positions update se chat-log re-render nahi hota.
  */
 
 const MAX_FLOOR_BUBBLES_PER_USER = 4;
 const FLOOR_BUBBLE_LIFETIME_MS = 4500;
-const LONG_PRESS_MS = 400;
+const EMPTY_MESSAGES: any[] = [];
 
 // Members list ki chhoti round pfp. Profile roomFloorBus ke cache se aati hai
 // (floor already fetch karta hai); chat-only room mein floor nahi hota, isliye
@@ -107,92 +105,6 @@ const MemberAvatar = memo(function MemberAvatar({ userId, username }: { userId: 
   );
 });
 
-const RoomMessageBubble = memo(
-  ({
-    msg, isMeMsg, verified, elite, power, equippedByCategory, photoUrl, myUsername,
-    isActive, onToggleActive, onReply, onProfile, onTip, onOpenCommunity,
-  }: {
-    msg: any; isMeMsg: boolean; verified: boolean; elite: boolean; power: number | null;
-    equippedByCategory: Record<string, any> | null; photoUrl?: string | null; myUsername?: string;
-    isActive: boolean; onToggleActive: () => void; onReply: () => void; onProfile: () => void;
-    onTip: () => void; onOpenCommunity?: (slug: string, name: string) => void;
-  }) => {
-    if (msg.isSystem) {
-      return (
-        <View style={styles.centerRow}>
-          <Text style={styles.systemPill}>{msg.content}</Text>
-        </View>
-      );
-    }
-    if (msg.isTip) {
-      return (
-        <View style={styles.centerRow}>
-          <View style={styles.tipPill}>
-            <CurrencyIcon type="zmoney" size={11} />
-            <Text style={styles.tipPillText}>{msg.content}</Text>
-          </View>
-        </View>
-      );
-    }
-
-    return (
-      <SwipeableBubble align={isMeMsg ? 'end' : 'start'} onReply={onReply}>
-        <View style={[styles.msgRow, isMeMsg ? styles.msgRowMine : styles.msgRowTheirs]}>
-          {!isMeMsg && (
-            <Pressable onPress={onProfile} style={styles.avatarSmall}>
-              {equippedByCategory ? (
-                <AvatarLayers equippedByCategory={equippedByCategory} photoUrl={photoUrl} />
-              ) : (
-                <Text style={styles.avatarSmallLetter}>{(msg.username || '?').charAt(0).toUpperCase()}</Text>
-              )}
-            </Pressable>
-          )}
-
-          <View style={[styles.msgCol, isMeMsg ? styles.alignEnd : styles.alignStart]}>
-            <View style={styles.senderRow}>
-              <Text style={styles.senderName}>{isMeMsg ? 'You' : msg.username}</Text>
-              {verified && <VerifiedBadge size="xs" />}
-              {elite && <EliteBadge size="xs" />}
-              {power != null && power > 0 && (
-                <View style={styles.powerInline}>
-                  <Ionicons name="flash" size={9} color="#facc15" />
-                  <Text style={styles.powerInlineText}>{power}</Text>
-                </View>
-              )}
-            </View>
-            <Pressable
-              onLongPress={onToggleActive}
-              delayLongPress={LONG_PRESS_MS}
-              style={[styles.bubble, isMeMsg ? styles.bubbleMine : styles.bubbleTheirs]}
-            >
-              <Text style={styles.bubbleText}>{renderWithMentions(msg.content, myUsername, onOpenCommunity)}</Text>
-            </Pressable>
-
-            {isActive && (
-              <View style={styles.actionMenu}>
-                <Pressable onPress={onReply} style={styles.actionRow}>
-                  <Ionicons name="arrow-undo-outline" size={14} color="#ffffff" />
-                  <Text style={styles.actionText}>Reply</Text>
-                </Pressable>
-                <Pressable onPress={onProfile} style={styles.actionRow}>
-                  <Ionicons name="person-outline" size={14} color="#ffffff" />
-                  <Text style={styles.actionText}>Profile</Text>
-                </Pressable>
-                {!isMeMsg && (
-                  <Pressable onPress={onTip} style={styles.actionRow}>
-                    <CurrencyIcon type="zmoney" size={14} />
-                    <Text style={styles.actionText}>Tip</Text>
-                  </Pressable>
-                )}
-              </View>
-            )}
-          </View>
-        </View>
-      </SwipeableBubble>
-    );
-  }
-);
-
 interface RoomChatWindowProps {
   activeRoom: any | null;
   show: boolean;
@@ -228,9 +140,7 @@ const RoomChatWindow = ({
   roomPositions, onOpenSettings, onOpenCommunity, isPrivileged, onRoomSaved,
 }: RoomChatWindowProps) => {
   const __z = useTopZIndex(!!activeRoom && !!show);
-  const scrollRef = useRef<ScrollView>(null);
   const floorRef = useRef<RoomFloorViewHandle>(null);
-  const [activeMsgKey, setActiveMsgKey] = useState<string | null>(null);
   const [showInfoPanel, setShowInfoPanel] = useState(false);
   const [showRadioModal, setShowRadioModal] = useState(false);
   const radioMuted = useRadioMuted();
@@ -248,15 +158,6 @@ const RoomChatWindow = ({
   const [roomMsgInput, setRoomMsgInput] = useState('');
   const roomTypingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const roomTypingSentRef = useRef(false);
-
-  const getEquippedByCategoryFor = useCallback(
-    (userId: any) => {
-      const av = avatars[userId];
-      if (!av) return null;
-      return buildEquippedByCategory(av.equippedItems, itemsById);
-    },
-    [avatars, itemsById]
-  );
 
   useBackButtonHandler(!!activeRoom && !!show, onClose);
 
@@ -311,10 +212,10 @@ const RoomChatWindow = ({
     setRoomMsgInput('');
   }, [roomMsgInput, activeRoom]);
 
-  const messages = roomMessages[activeRoom?.id] || [];
+  const messages = (activeRoom && roomMessages[activeRoom.id]) || EMPTY_MESSAGES;
 
   useEffect(() => {
-    messages.forEach((m) => m.sender_id && ensureRank(m.sender_id));
+    messages.forEach((m: { sender_id: string | number | null | undefined; }) => m.sender_id && ensureRank(m.sender_id));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length]);
 
@@ -323,20 +224,35 @@ const RoomChatWindow = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [members]);
 
-  // Chat-log drawer khulte hi / naya message aane par sabse neeche jump.
+  // Chat-log drawer: chat-only room mein hamesha khula, warna toggle se.
+  // Inverted FlatList (RoomChatLog) khud newest ko bottom par rakhta hai -
+  // scrollToEnd / onContentSizeChange hack ab nahi chahiye.
   const isChatOnly = !!activeRoom?.chat_only;
   const chatDrawerOpen = isChatOnly || showChatDrawer;
-  useEffect(() => {
-    if (activeRoom && show && chatDrawerOpen) {
-      requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: false }));
-    }
-  }, [activeRoom, show, chatDrawerOpen]);
-  useEffect(() => {
-    if (activeRoom && show && chatDrawerOpen) {
-      scrollRef.current?.scrollToEnd({ animated: true });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages.length]);
+
+  // Lazy-mount-once: pehli baar khulne par mount, uske baad sirf hide/unhide.
+  const logMountedRef = useRef(false);
+  if (chatDrawerOpen) logMountedRef.current = true;
+  const infoMountedRef = useRef(false);
+  if (showInfoPanel) infoMountedRef.current = true;
+
+  // Stable handlers (latest props ref se) taaki memo'd chat rows kabhi
+  // bekaar re-render na hon.
+  const latestRef = useRef({ onViewProfile, onTip, onOpenCommunity, activeRoom });
+  latestRef.current = { onViewProfile, onTip, onOpenCommunity, activeRoom };
+  const handleReply = useCallback((msg: any) => {
+    setRoomMsgInput((prev) => `${prev}@${msg.username} `);
+  }, []);
+  const handleProfile = useCallback((msg: any) => {
+    latestRef.current.onViewProfile({ id: msg.sender_id, username: msg.username });
+  }, []);
+  const handleTip = useCallback((msg: any) => {
+    const l = latestRef.current;
+    l.onTip({ id: msg.sender_id, username: msg.username }, l.activeRoom?.id);
+  }, []);
+  const handleOpenCommunity = useCallback((slug: string, name: string) => {
+    latestRef.current.onOpenCommunity?.(slug, name);
+  }, []);
 
   // Naya message -> sender ke floor-card ke upar chhota speech-bubble.
   useEffect(() => {
@@ -395,18 +311,6 @@ const RoomChatWindow = ({
   const isHost = String(activeRoom.owner_id) === String(myId);
   const myUsername = (members || []).find((m) => String(m.user_id) === String(myId))?.username;
 
-  const handleProfile = (msg: any) => {
-    onViewProfile({ id: msg.sender_id, username: msg.username });
-    setActiveMsgKey(null);
-  };
-  const handleReply = (msg: any) => {
-    setRoomMsgInput((prev) => `${prev}@${msg.username} `);
-    setActiveMsgKey(null);
-  };
-  const handleTip = (msg: any) => {
-    onTip({ id: msg.sender_id, username: msg.username }, activeRoom.id);
-    setActiveMsgKey(null);
-  };
   const handleSelectStation = (station: RadioStation) => {
     if (typeof station.url !== 'string' || !station.url) return;
     onSetRadio({ name: station.name, url: station.url });
@@ -465,44 +369,32 @@ const RoomChatWindow = ({
           />
         )}
 
-        {chatDrawerOpen && (
-          <View style={[styles.chatDrawer, isChatOnly && styles.chatDrawerOpaque]} pointerEvents="box-none">
-            <ScrollView
-              ref={scrollRef}
-              contentContainerStyle={styles.chatDrawerContent}
-              onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
-            >
-              {messages.map((msg, idx) => {
-                const key = `${msg.sender_id}:${idx}`;
-                const isMeMsg = String(msg.sender_id) === String(myId);
-                return (
-                  <RoomMessageBubble
-                    key={key}
-                    msg={msg}
-                    isMeMsg={isMeMsg}
-                    verified={!!verifieds[msg.sender_id]}
-                    elite={!!elites[msg.sender_id]}
-                    power={powers[msg.sender_id] ?? null}
-                    equippedByCategory={getEquippedByCategoryFor(msg.sender_id)}
-                    photoUrl={avatars[msg.sender_id]?.photoUrl}
-                    myUsername={myUsername}
-                    isActive={activeMsgKey === key}
-                    onToggleActive={() => setActiveMsgKey((k) => (k === key ? null : key))}
-                    onReply={() => handleReply(msg)}
-                    onProfile={() => handleProfile(msg)}
-                    onTip={() => handleTip(msg)}
-                    onOpenCommunity={onOpenCommunity}
-                  />
-                );
-              })}
-            </ScrollView>
-          </View>
+        {logMountedRef.current && (
+          <RoomChatLog
+            messages={messages}
+            visible={chatDrawerOpen && !!show}
+            opaque={isChatOnly}
+            myId={myId}
+            myUsername={myUsername}
+            powers={powers}
+            verifieds={verifieds}
+            elites={elites}
+            avatars={avatars}
+            itemsById={itemsById}
+            onReply={handleReply}
+            onProfile={handleProfile}
+            onTip={handleTip}
+            onOpenCommunity={handleOpenCommunity}
+          />
         )}
       </View>
 
       {/* Info drawer - room name/radio/settings + member list (kick/ban for host) */}
-      {showInfoPanel && (
-        <View style={styles.infoOverlay} pointerEvents="box-none">
+      {infoMountedRef.current && (
+        <View
+          style={[styles.infoOverlay, !showInfoPanel && styles.hiddenView]}
+          pointerEvents={showInfoPanel ? 'box-none' : 'none'}
+        >
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowInfoPanel(false)} />
           <View style={[styles.infoDrawer, { paddingTop: insets.top + 14 }]}>
             <View style={styles.infoDrawerHeader}>
@@ -717,32 +609,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(15,19,41,0.7)', borderWidth: 1, borderColor: '#2a2f55',
     alignItems: 'center', justifyContent: 'center',
   },
-  chatDrawer: { position: 'absolute', left: 0, right: 0, bottom: 0, top: '45%', zIndex: 15, backgroundColor: 'rgba(15,19,41,0.72)' },
-  chatDrawerOpaque: { top: 0, backgroundColor: '#0f1329' },
-  chatDrawerContent: { padding: 12, gap: 10 },
-  centerRow: { alignItems: 'center' },
-  systemPill: { fontSize: 11, color: '#a1a1aa', backgroundColor: 'rgba(38,43,82,0.6)', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 4 },
-  tipPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(113,63,18,0.2)', borderWidth: 1, borderColor: 'rgba(133,77,14,0.4)', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 4 },
-  tipPillText: { fontSize: 11, color: '#fde047' },
-  msgRow: { flexDirection: 'row', gap: 8, minWidth: 0 },
-  msgRowMine: { flexDirection: 'row-reverse' },
-  msgRowTheirs: { flexDirection: 'row' },
-  avatarSmall: { height: 72, aspectRatio: AVATAR_ASPECT_RATIO_NUM, borderRadius: 12, backgroundColor: '#33397a', overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
-  avatarSmallLetter: { color: '#ffffff', fontWeight: '700', fontSize: 16 },
-  msgCol: { flexShrink: 1, maxWidth: '78%' },
-  alignEnd: { alignItems: 'flex-end' },
-  alignStart: { alignItems: 'flex-start' },
-  senderRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 3, paddingHorizontal: 2 },
-  senderName: { fontSize: 11, color: '#a1a1aa' },
-  powerInline: { flexDirection: 'row', alignItems: 'center', gap: 1 },
-  powerInlineText: { fontSize: 9, fontWeight: '700', color: '#facc15' },
-  bubble: { padding: 12, borderRadius: 16 },
-  bubbleMine: { backgroundColor: '#4f46e5', borderBottomRightRadius: 2 },
-  bubbleTheirs: { backgroundColor: '#262b52', borderBottomLeftRadius: 2 },
-  bubbleText: { color: '#ffffff', fontSize: 14 },
-  actionMenu: { marginTop: 4, backgroundColor: '#1c2044', borderWidth: 1, borderColor: '#2a2f55', borderRadius: 12, overflow: 'hidden' },
-  actionRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 8 },
-  actionText: { color: '#ffffff', fontSize: 13 },
+  hiddenView: { display: 'none' },
   infoOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 30, flexDirection: 'row', justifyContent: 'flex-end' },
   infoDrawer: { width: '78%', maxWidth: 320, backgroundColor: '#161a33', borderLeftWidth: 1, borderLeftColor: '#2a2f55', padding: 14, gap: 12 },
   infoDrawerHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

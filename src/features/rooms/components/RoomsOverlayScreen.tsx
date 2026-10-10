@@ -6,12 +6,10 @@ import {
   RefreshControl,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import axios from 'axios';
-import { Ionicons } from '@expo/vector-icons';
-import { getActiveRooms, createRoom } from '../services/roomsApi';
+import { getActiveRooms } from '../services/roomsApi';
 import { showAlert } from '../../../shared/utils/alertBus';
 import { API_BASE } from '../../../shared/config/config';
 import { getToken } from '../../../shared/services/NetworkManager';
@@ -91,15 +89,14 @@ interface RoomsOverlayScreenProps {
   onClose: () => void;
 }
 
+const SPACER_ID = '__spacer__';
+
 export default function RoomsOverlayScreen({ show, onClose }: RoomsOverlayScreenProps) {
   useBackButtonHandler(show, onClose);
 
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [showCreate, setShowCreate] = useState(false);
-  const [newRoomName, setNewRoomName] = useState('');
-  const [creating, setCreating] = useState(false);
 
   // --- isPrivileged: chhota self-profile fetch, ek baar mount par -------
   const privilegedRef = useRef(false);
@@ -173,31 +170,16 @@ export default function RoomsOverlayScreen({ show, onClose }: RoomsOverlayScreen
     loadRooms({ silent: true });
   };
 
-  const handleCreateRoom = async () => {
-    const trimmed = newRoomName.trim();
-    if (!trimmed) return;
-    setCreating(true);
-    try {
-      await createRoom(trimmed);
-      notifyMyRoomChanged();
-      setNewRoomName('');
-      setShowCreate(false);
-      loadRooms({ silent: true });
-    } catch (err: any) {
-      showAlert(err?.response?.data?.detail || 'Could not create room.');
-    } finally {
-      setCreating(false);
-    }
-  };
+  // Odd count par aakhri card akela row mein poori width le leta tha
+  // (card pe `flex: 1`). Invisible spacer se har card same size rehta hai.
+  const listData: Room[] =
+    rooms.length % 2 === 1 ? [...rooms, { id: SPACER_ID, room_name: '' }] : rooms;
 
   return (
     <PersistentSlide show={show} style={styles.screen}>
       <View style={styles.screen}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Rooms</Text>
-          <Pressable style={styles.createBtn} onPress={() => setShowCreate((v) => !v)}>
-            <Ionicons name={showCreate ? 'close' : 'add'} size={18} color="#000000" />
-          </Pressable>
         </View>
 
         {/* Room minimize (back) hone ke baad bhi user ko dikhe ki wo kis room mein hai + wapas/exit ka button */}
@@ -228,46 +210,29 @@ export default function RoomsOverlayScreen({ show, onClose }: RoomsOverlayScreen
           </Pressable>
         )}
 
-        {showCreate && (
-          <View style={styles.createRow}>
-            <TextInput
-              style={styles.createInput}
-              value={newRoomName}
-              onChangeText={setNewRoomName}
-              placeholder="Room name"
-              placeholderTextColor="#71717a"
-              maxLength={30}
-              onSubmitEditing={handleCreateRoom}
-            />
-            <Pressable
-              style={[styles.createSubmit, (!newRoomName.trim() || creating) && styles.createSubmitDisabled]}
-              onPress={handleCreateRoom}
-              disabled={!newRoomName.trim() || creating}
-            >
-              <Text style={styles.createSubmitText}>{creating ? '...' : 'Create'}</Text>
-            </Pressable>
-          </View>
-        )}
-
         {!loading && rooms.length === 0 ? (
           <View style={styles.centerFill}>
-            <Text style={styles.emptyText}>No rooms yet - create one!</Text>
+            <Text style={styles.emptyText}>No rooms yet.</Text>
           </View>
         ) : (
           <FlatList
-            data={rooms}
+            data={listData}
             keyExtractor={(item) => String(item.id)}
             numColumns={2}
             columnWrapperStyle={styles.row}
             contentContainerStyle={styles.listContent}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#ffffff" />}
-            renderItem={({ item }) => (
+            renderItem={({ item }) =>
+              String(item.id) === SPACER_ID ? (
+                <View style={styles.spacer} />
+              ) : (
               <RoomCard
                 room={item}
                 isActive={String(roomState.activeRoom?.id) === String(item.id)}
                 onPress={() => roomState.openRoom(item as any)}
               />
-            )}
+              )
+            }
           />
         )}
 
@@ -282,7 +247,6 @@ export default function RoomsOverlayScreen({ show, onClose }: RoomsOverlayScreen
             onExit={roomState.exitRoom}
             onSwitchRoom={() => {
               roomState.minimizeRoom();
-              setShowCreate(false);
               loadRooms({ silent: true });
             }}
             getMyId={getMyId}
@@ -324,33 +288,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   headerTitle: { color: '#ffffff', fontSize: 22, fontWeight: '700' },
-  createBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#ffffff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  createRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, marginBottom: 12 },
-  createInput: {
-    flex: 1,
-    backgroundColor: '#18181b',
-    borderWidth: 1,
-    borderColor: '#27272a',
-    borderRadius: 999,
-    color: '#ffffff',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  createSubmit: {
-    backgroundColor: '#ffffff',
-    borderRadius: 999,
-    paddingHorizontal: 16,
-    justifyContent: 'center',
-  },
-  createSubmitDisabled: { opacity: 0.4 },
-  createSubmitText: { color: '#000000', fontWeight: '700', fontSize: 13 },
   activeBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     marginHorizontal: 16, marginBottom: 12, paddingVertical: 10, paddingHorizontal: 12,
@@ -372,6 +309,7 @@ const styles = StyleSheet.create({
   emptyText: { color: '#71717a', fontSize: 13 },
   listContent: { paddingHorizontal: 16, paddingBottom: 24 },
   row: { gap: 12, marginBottom: 12 },
+  spacer: { flex: 1 },
   card: { flex: 1, borderRadius: 12, overflow: 'hidden', borderWidth: 2 },
   cover: { width: '100%', aspectRatio: 3 / 4, backgroundColor: '#18181b', alignItems: 'center', justifyContent: 'center' },
   coverImg: { width: '100%', height: '100%' },

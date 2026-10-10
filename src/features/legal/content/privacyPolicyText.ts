@@ -11,7 +11,7 @@ export interface LegalSection {
   body: string;
 }
 
-export const PRIVACY_LAST_UPDATED = 'October 1, 2026';
+export const PRIVACY_LAST_UPDATED = 'October 8, 2026';
 
 export const PRIVACY_POLICY_SECTIONS: LegalSection[] = [
   {
@@ -40,7 +40,9 @@ export const PRIVACY_POLICY_SECTIONS: LegalSection[] = [
 
 • Push Notification Token: If you enable notifications, we store a device push token (via Firebase Cloud Messaging) so we can deliver notifications for things like new messages, mentions, comments, and trade/tip activity. You can disable this anytime from your device settings.
 
-• Uploaded Images: Profile pictures, room/community custom icons, and other images you upload are stored using Cloudflare R2 (an object storage provider). We keep these files as long as your account/room/community exists, or until you replace or remove them.
+• Uploaded Images & Photos: Profile pictures, room/community custom icons, photos you send in direct messages (DMs), and other images you upload are stored using Cloudflare R2 (an object storage provider). Photos sent in DMs are resized/compressed on your device before upload and are kept in private (non-public) storage; they are shown to the person you send them to through temporary secure links. We keep these files as long as your account, room/community or the related message exists, or until you replace or remove them.
+
+• Camera & Photo Access: If you choose "Take a photo" when sending a DM photo, the app asks for camera permission and uses the camera only to capture that photo. If you choose "Photo from gallery", you pick a specific photo and only that photo is uploaded. We do not access your camera or your other photos in the background.
 
 • Purchase Information: If you buy virtual currency or items using real money, the purchase is processed by Google Play, the Apple App Store, or another payment provider. We receive confirmation of the purchase (item, amount, transaction ID) but we do not see or store your card, UPI, or bank details — those are handled entirely by the payment provider/app store.
 
@@ -73,7 +75,7 @@ export const PRIVACY_POLICY_SECTIONS: LegalSection[] = [
 
 • Advertising partners - Google AdMob receives device and ad-interaction data (such as your advertising ID and IP address) so it can show and measure ads. Google's use of this data is described in Google's Privacy Policy (https://policies.google.com/privacy). You can reset your advertising ID or opt out of ads personalization in your Android device settings (usually under Settings > Privacy > Ads; the exact path varies by device).
 
-• Other players - your username, avatar, online/presence status, and anything you post or send in public spaces (Feed, World Chat, Rooms, DMs) is visible to the players you interact with. Community mods/owners can also see activity and reports within their own community. Please don't share personal information with strangers in chat.
+• Other players - your username, avatar, online/presence status, and anything you post or send in public spaces (Feed, World Chat, Rooms) and in DMs (including photos) is visible to the players you interact with. Please note that anyone who receives a photo from you can save it or take a screenshot, so only send photos you are comfortable sharing. Community mods/owners can also see activity and reports within their own community. Please don't share personal information with strangers in chat.
 
 • Law enforcement or authorities - if required by law, or to protect the safety, rights, or property of ZeyeroStars, our players, or the public.
 
@@ -84,10 +86,10 @@ export const PRIVACY_POLICY_SECTIONS: LegalSection[] = [
     body: `ZeyeroStars is meant to be a respectful community. Abusive language, harassment, and harmful behavior are not allowed anywhere in the Game - including posts, comments, World Chat, and Rooms. To enforce this, we:
 
 • Automatically filter known abusive/offensive words out of messages and posts before they're shown to other players
-• Allow players to report posts, comments, messages, or other users for review
+• Allow players to report posts, comments, messages (including DM photos), or other users for review
 • May suspend or permanently ban, without prior warning, any account found to violate these guidelines
 
-Reports and moderation actions are logged against your account and may be reviewed by our moderation team.`,
+Sexually explicit, nude, graphically violent, or otherwise illegal images are not allowed, including in DMs. Reported photos may be reviewed by our moderation team. Reports and moderation actions are logged against your account and may be reviewed by our moderation team.`,
   },
   {
     heading: "6. Children's Privacy",

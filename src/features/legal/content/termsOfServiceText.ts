@@ -27,6 +27,7 @@ export const TERMS_OF_SERVICE_SECTIONS: LegalSection[] = [
 
 • Harass, threaten, abuse, or use offensive/abusive language against other players - anywhere in the Game, including Feed posts, comments, World Chat, and Rooms
 • Post hate speech, sexual content involving minors, or other illegal content
+• Send or upload nude, sexually explicit, or graphically violent images (including photos sent in DMs), or any image you do not have the right to share
 • Cheat, exploit bugs, or use bots/automation
 • Impersonate another person or ZeyeroStars staff
 • Attempt to buy, sell, or trade virtual currency/items for real money outside the Game (e.g. "real-money trading")
@@ -36,9 +37,9 @@ We use automated filtering to catch and mask abusive language in public chat and
   },
   {
     heading: '5. Your Content & Uploads',
-    body: `Anything you post, send, or upload in the Game - including profile pictures, room/community icons, feed posts, comments, and chat messages ("Your Content") - remains yours, but by uploading or posting it you grant us a worldwide, non-exclusive, royalty-free license to host, store, display, and distribute it within the Game (including to other players who can see it) for as long as your account or that content exists.
+    body: `Anything you post, send, or upload in the Game - including profile pictures, room/community icons, photos sent in DMs, feed posts, comments, and chat messages ("Your Content") - remains yours, but by uploading or posting it you grant us a worldwide, non-exclusive, royalty-free license to host, store, display, and distribute it within the Game (including to other players who can see it) for as long as your account or that content exists.
 
-Uploaded images (such as your profile picture or a room/community icon) are stored using our storage provider, Cloudflare R2. You are responsible for making sure Your Content does not violate these Terms (see Section 4) or any third party's rights. We may remove Your Content, or refuse to display it, at our discretion, without notice.`,
+Uploaded images (such as your profile picture, a room/community icon, or a photo you send in a DM) are stored using our storage provider, Cloudflare R2. You are responsible for making sure Your Content does not violate these Terms (see Section 4) or any third party's rights. We may remove Your Content, or refuse to display it, at our discretion, without notice.`,
   },
   {
     heading: '6. Virtual Currency & Virtual Items',

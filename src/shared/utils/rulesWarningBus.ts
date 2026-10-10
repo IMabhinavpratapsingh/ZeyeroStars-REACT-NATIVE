@@ -8,7 +8,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 //
 // "Don't show this again" ek AsyncStorage flag hai - jab tak user khud
 // wo checkbox tick na kare, yeh warning HAR baar dikhega jab bhi koi
-// join action (room/world chat/community/community room) ho.
+// join action (room/world chat/community) ho.
 //
 // IMPORTANT (web -> RN difference): localStorage.getItem SYNC tha,
 // isliye hasOptedOutOfRulesWarning() turant true/false de deta tha.
@@ -62,7 +62,7 @@ export async function setDontShowRulesWarningAgain(value: boolean): Promise<void
 }
 
 // context: chhota label jo modal ke subtitle mein dikhta hai, e.g.
-// "room", "world chat", "community", "community room". Resolve HAMESHA
+// "room", "world chat", "community". Resolve HAMESHA
 // `true` hi hota hai (yeh ek permission-gate nahi, sirf ek reminder
 // hai) - agar user pehle hi "don't show again" tick kar chuka hai to
 // modal dikhaye bina hi turant resolve ho jaata hai.

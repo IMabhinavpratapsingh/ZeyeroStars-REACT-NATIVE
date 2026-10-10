@@ -54,10 +54,13 @@ const RoomInputOverlay = ({ show, zIndex, children }: RoomInputOverlayProps) => 
     bottom: Math.max(0, keyboard.height.value - BOTTOM_NAV_PX),
   }));
 
-  if (!show) return null;
-
+  // Hide/unhide (unmount nahi): TextInput + keyboard hook mounted rehte hain,
+  // room minimize/restore par input dobara build nahi hota.
   return (
-    <View style={[styles.wrapper, { zIndex }]} pointerEvents="box-none">
+    <View
+      style={[styles.wrapper, { zIndex }, !show && styles.hidden]}
+      pointerEvents={show ? 'box-none' : 'none'}
+    >
       <Animated.View style={[styles.bar, animatedStyle]} pointerEvents="auto">
         {children}
       </Animated.View>
@@ -70,6 +73,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0, left: 0, right: 0, bottom: 0,
   },
+  hidden: { display: 'none' },
   bar: {
     position: 'absolute',
     left: 0,

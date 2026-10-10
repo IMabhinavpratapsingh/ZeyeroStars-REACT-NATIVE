@@ -280,10 +280,30 @@ const MemberAvatarCard = memo(function MemberAvatarCard({
           delayLongPress={LONG_PRESS_MS}
           style={styles.cardTouchable}
         >
-          <AvatarLayers equippedByCategory={rm.equippedByCategory} photoUrl={cachedPhotoUrl} exactFit />
+          <AvatarLayers equippedByCategory={rm.equippedByCategory} photoUrl={cachedPhotoUrl} exactFit layer="foreground" />
         </Pressable>
       </View>
 
+    </Animated.View>
+  );
+});
+
+// ---------------------------------------------------------------------
+// Background asset - har member ka, lekin ALAG (neeche wali) layer mein.
+// Pehle background card ke andar hi tha, isliye jo member baad mein render
+// hota uska background pehle wale member ki pfp/frame ke upar aa jaata tha.
+// Ab saare backgrounds (zIndex 50) saare avatars (zIndex 100+) ke neeche
+// rehte hain. Walk animation same params se chalta hai, isliye avatar ke
+// saath sync rehta hai.
+// ---------------------------------------------------------------------
+
+const MemberBackgroundCard = memo(function MemberBackgroundCard({ rm }: { rm: RenderMember }) {
+  const walkStyle = useWalkPosition(rm.leftPx, rm.topPx, rm.sceneScale);
+  return (
+    <Animated.View style={[styles.cardWrap, { zIndex: 50 }, walkStyle]} pointerEvents="none">
+      <View style={styles.cardBox} pointerEvents="none">
+        <AvatarLayers equippedByCategory={rm.equippedByCategory} exactFit layer="background" />
+      </View>
     </Animated.View>
   );
 });
@@ -325,7 +345,7 @@ const MemberBubble = memo(function MemberBubble({
           ) : (
             rm.bubbleContent.messages.map((msg) => (
               <View key={msg.id} style={styles.msgBubble}>
-                <Text style={styles.msgBubbleText} numberOfLines={3}>
+                <Text style={styles.msgBubbleText}>
                   <Text style={styles.msgBubbleName}>{rm.member.username}: </Text>
                   {msg.text}
                 </Text>
@@ -728,6 +748,11 @@ const RoomFloorView = forwardRef<RoomFloorViewHandle, RoomFloorViewProps>(functi
                   pointerEvents="none"
                 />
               )}
+              {renderMembers.map((rm) =>
+                rm.equippedByCategory?.background != null ? (
+                  <MemberBackgroundCard key={`bg-${room?.id}-${rm.uid}`} rm={rm} />
+                ) : null
+              )}
               {renderMembers.map((rm) => (
                 <MemberAvatarCard key={`${room?.id}-${rm.uid}`} rm={rm} onLongPress={handleLongPress} />
               ))}
@@ -803,8 +828,12 @@ const styles = StyleSheet.create({
   bubbleWrap: { position: 'absolute', left: 0, top: 0, zIndex: 9999 },
   bubbleAnchor: {
     position: 'absolute',
-    left: 0,
-    right: 0,
+    // cardBox sirf avatar-card jitna chaura hai; bubble ko uski width tak
+    // bandhne se lamba message 3 line me "..." ho jaata tha. Dono taraf
+    // extra jagah dekar (center-aligned, isliye avatar ke upar hi rahega)
+    // bubble ko badhne diya.
+    left: -90,
+    right: -90,
     bottom: `${(1 - BUBBLE_ANCHOR_TOP_FRACTION) * 100}%`,
     marginBottom: -4,
     alignItems: 'center',
@@ -821,7 +850,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   typingDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: '#4b5563' },
-  msgBubble: { backgroundColor: '#ffffff', borderRadius: 16, paddingHorizontal: 10, paddingVertical: 6, maxWidth: 160 },
+  msgBubble: { backgroundColor: '#ffffff', borderRadius: 16, paddingHorizontal: 10, paddingVertical: 6, maxWidth: 230 },
   msgBubbleText: { fontSize: 11, color: '#0f172a' },
   msgBubbleName: { fontWeight: '700', color: '#0f172a' },
   flyLayer: { position: 'absolute', alignItems: 'center', zIndex: 9999 },

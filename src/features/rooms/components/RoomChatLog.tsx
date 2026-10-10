@@ -9,6 +9,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 // jaata hai aur floor ko touch milta hi nahi.
 import { FlatList } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
+import Animated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
+import { BOTTOM_NAV_PX } from '../../../shared/constants/layout';
 import CurrencyIcon from '../../../shared/components/CurrencyIcon';
 import SwipeableBubble from '../../../shared/components/SwipeableBubble';
 import VerifiedBadge from '../../../shared/components/VerifiedBadge';
@@ -165,6 +167,8 @@ interface RoomChatLogProps {
   visible: boolean;
   /** chat-only room: poori screen opaque log. */
   opaque: boolean;
+  /** Input bar ki height - log iske upar khatam hota hai, peeche nahi chhupta. */
+  bottomInset: number;
   myId: any;
   myUsername?: string;
   powers: Record<string, any>;
@@ -181,11 +185,18 @@ interface RoomChatLogProps {
 const Separator = () => <View style={styles.separator} />;
 
 const RoomChatLog = ({
-  messages, visible, opaque, myId, myUsername,
+  messages, visible, opaque, bottomInset, myId, myUsername,
   powers, verifieds, elites, avatars, itemsById,
   onReply, onProfile, onTip, onOpenCommunity,
 }: RoomChatLogProps) => {
   const [activeKey, setActiveKey] = useState<string | null>(null);
+
+  // Input bar keyboard ke saath upar uthta hai (RoomInputOverlay jaisa hi
+  // formula) - log ka neeche ka kinara bhi usi ke saath uthna chahiye.
+  const keyboard = useAnimatedKeyboard();
+  const insetStyle = useAnimatedStyle(() => ({
+    paddingBottom: Math.max(0, keyboard.height.value - BOTTOM_NAV_PX) + bottomInset,
+  }));
 
   const toggleActive = useCallback((key: string) => setActiveKey((prev) => (prev === key ? null : key)), []);
 
@@ -235,8 +246,8 @@ const RoomChatLog = ({
   );
 
   return (
-    <View
-      style={[styles.chatDrawer, opaque && styles.chatDrawerOpaque, !visible && styles.hidden]}
+    <Animated.View
+      style={[styles.chatDrawer, opaque && styles.chatDrawerOpaque, !visible && styles.hidden, insetStyle]}
       pointerEvents={visible ? 'auto' : 'none'}
     >
       <FlatList
@@ -256,7 +267,7 @@ const RoomChatLog = ({
         contentContainerStyle={styles.content}
         style={styles.list}
       />
-    </View>
+    </Animated.View>
   );
 };
 

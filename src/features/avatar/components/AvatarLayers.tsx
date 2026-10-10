@@ -52,12 +52,20 @@ interface AvatarLayersProps {
   equippedByCategory?: EquippedByCategory;
   photoUrl?: string | null;
   exactFit?: boolean;
+  /**
+   * 'all' (default): poora avatar. 'background': SIRF background asset.
+   * 'foreground': background ke bina baaki sab (back/photo/front/frame).
+   * Room floor par background alag layer mein render hota hai taaki kisi
+   * ka bhi background kisi doosre ki pfp/frame ke upar na aaye.
+   */
+  layer?: 'all' | 'background' | 'foreground';
 }
 
 const AvatarLayers = ({
   equippedByCategory = {},
   photoUrl = null,
   exactFit = false,
+  layer = 'all',
 }: AvatarLayersProps) => {
   const [box, setBox] = useState<{ width: number; height: number } | null>(null);
 
@@ -91,22 +99,26 @@ const AvatarLayers = ({
     <View style={styles.outer} onLayout={onLayout}>
       <View style={exactFit ? styles.fill : box ?? styles.zero}>
         {/* background: sabse peeche */}
-        <AssetLayer asset={backgroundAsset} />
+        {layer !== 'foreground' && <AssetLayer asset={backgroundAsset} />}
 
-        {/* back: photo ke PICHHE */}
-        {backIds.map((id) => (
-          <AssetLayer key={`back-${id}`} asset={getAssetUrl('back', id)} />
-        ))}
+        {layer !== 'background' && (
+          <>
+            {/* back: photo ke PICHHE */}
+            {backIds.map((id) => (
+              <AssetLayer key={`back-${id}`} asset={getAssetUrl('back', id)} />
+            ))}
 
-        <AvatarBase photoUrl={photoUrl} />
+            <AvatarBase photoUrl={photoUrl} />
 
-        {/* front: photo ke AAGE */}
-        {frontIds.map((id) => (
-          <AssetLayer key={`front-${id}`} asset={getAssetUrl('front', id)} />
-        ))}
+            {/* front: photo ke AAGE */}
+            {frontIds.map((id) => (
+              <AssetLayer key={`front-${id}`} asset={getAssetUrl('front', id)} />
+            ))}
 
-        {/* frame: sabse upar */}
-        <AssetLayer asset={frameAsset} />
+            {/* frame: sabse upar */}
+            <AssetLayer asset={frameAsset} />
+          </>
+        )}
       </View>
     </View>
   );

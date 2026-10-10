@@ -149,6 +149,11 @@ const CommunityListScreen = ({ show, onClose, onOpenCommunity, initialTab = 'all
   };
 
   const activeData = tab === 'all' ? communities : myList;
+  // Odd count par aakhri card akela row mein poori width le leta tha (cardWrap
+  // pe `flex: 1`) - isliye bada dikhta tha. Invisible spacer se har card Rooms
+  // jaisa same size rehta hai.
+  const listData: any[] =
+    activeData.length % 2 === 1 ? [...activeData, { id: '__spacer__', __spacer: true }] : activeData;
   const activeLoading = tab === 'all' ? loading : myLoading;
   const emptyText =
     tab === 'all'
@@ -214,18 +219,22 @@ const CommunityListScreen = ({ show, onClose, onOpenCommunity, initialTab = 'all
         ) : (
           <FlatList
             key={tab}
-            data={activeData}
+            data={listData}
             keyExtractor={(c) => String(c.id)}
             numColumns={2}
             columnWrapperStyle={styles.row}
             contentContainerStyle={styles.listContent}
             onEndReachedThreshold={0.4}
             onEndReached={tab === 'all' ? loadMore : undefined}
-            renderItem={({ item: c }) => (
-              <View style={styles.cardWrap}>
-                <CommunityCard community={c} onPress={() => onOpenCommunity(c)} />
-              </View>
-            )}
+            renderItem={({ item: c }) =>
+              c.__spacer ? (
+                <View style={styles.cardWrap} />
+              ) : (
+                <View style={styles.cardWrap}>
+                  <CommunityCard community={c} onPress={() => onOpenCommunity(c)} />
+                </View>
+              )
+            }
             ListFooterComponent={
               tab === 'all' && !hasMore && communities.length > 0 ? (
                 <Text style={styles.footerText}>No more communities</Text>

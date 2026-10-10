@@ -161,9 +161,15 @@ export default function RoomsOverlayScreen({ show, onClose }: RoomsOverlayScreen
     }
   }, []);
 
+  // Overlay hamesha mounted rehta hai (sirf slide hota hai), isliye mount par
+  // ek baar load kaafi nahi tha. Ab jab bhi overlay khulta hai (show -> true)
+  // list refresh hoti hai. Pehli baar spinner, baaki baar silent.
+  const hasLoadedOnce = useRef(false);
   useEffect(() => {
-    loadRooms();
-  }, [loadRooms]);
+    if (!show) return;
+    loadRooms({ silent: hasLoadedOnce.current });
+    hasLoadedOnce.current = true;
+  }, [show, loadRooms]);
 
   const onRefresh = () => {
     setRefreshing(true);

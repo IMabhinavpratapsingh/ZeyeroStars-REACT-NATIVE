@@ -65,7 +65,7 @@ import { toggleRadioMuted, useRadioMuted } from '../services/radioMute';
  */
 
 const MAX_FLOOR_BUBBLES_PER_USER = 4;
-const FLOOR_BUBBLE_LIFETIME_MS = 4500;
+const FLOOR_BUBBLE_LIFETIME_MS = 6500;
 const EMPTY_MESSAGES: any[] = [];
 
 // Members list ki chhoti round pfp. Profile roomFloorBus ke cache se aati hai
@@ -149,6 +149,12 @@ const RoomChatWindow = ({
   const [showChatDrawer, setShowChatDrawer] = useState(false);
   const [showRoomDrawer, setShowRoomDrawer] = useState(false);
   const [showChessPanel, setShowChessPanel] = useState(false);
+  // Input bar (overlay) ki asli height - chat-log ko neeche itni jagah chhodni
+  // hai taaki aakhri messages input ke peeche na chhupein.
+  const [inputBarH, setInputBarH] = useState(0);
+  const handleInputBarHeight = useCallback((h: number) => {
+    setInputBarH((prev) => (Math.abs(prev - h) < 0.5 ? prev : h));
+  }, []);
 
   const [floorBubbles, setFloorBubbles] = useState<Record<string, { id: string; text: string }[]>>({});
   const bubbleTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
@@ -374,6 +380,7 @@ const RoomChatWindow = ({
             messages={messages}
             visible={chatDrawerOpen && !!show}
             opaque={isChatOnly}
+            bottomInset={inputBarH}
             myId={myId}
             myUsername={myUsername}
             powers={powers}
@@ -469,7 +476,7 @@ const RoomChatWindow = ({
       <RoomChessPanel show={showChessPanel} onClose={() => setShowChessPanel(false)} />
 
       {/* Message input - isolated overlay, keyboard-aware on its own. */}
-      <RoomInputOverlay show={!!activeRoom && !!show} zIndex={__z + 1}>
+      <RoomInputOverlay show={!!activeRoom && !!show} zIndex={__z + 1} onHeightChange={handleInputBarHeight}>
         {!isChatOnly && (
           <>
             {showRoomDrawer && (

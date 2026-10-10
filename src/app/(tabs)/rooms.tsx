@@ -161,9 +161,16 @@ export default function RoomsScreen() {
     }
   }, []);
 
+  // Tabs is screen ko unmount nahi karta (sirf hide), isliye sirf mount par
+  // load karna kaafi nahi tha. Ab jab bhi Rooms tab focus hota hai (pehli
+  // baar + har baar wapas aane par) list refresh hoti hai. Pehli baar
+  // spinner, baaki baar silent (purani list dikhti rehti hai).
+  const hasLoadedOnce = useRef(false);
   useEffect(() => {
-    loadRooms();
-  }, [loadRooms]);
+    if (!isFocused) return;
+    loadRooms({ silent: hasLoadedOnce.current });
+    hasLoadedOnce.current = true;
+  }, [isFocused, loadRooms]);
 
   const onRefresh = () => {
     setRefreshing(true);

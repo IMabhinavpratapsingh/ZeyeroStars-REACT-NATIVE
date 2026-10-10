@@ -34,9 +34,11 @@ interface RoomInputOverlayProps {
   show: boolean;
   zIndex: number;
   children: ReactNode;
+  /** Bar ki asli (content) height - chat-log ko bottom inset dene ke liye. */
+  onHeightChange?: (height: number) => void;
 }
 
-const RoomInputOverlay = ({ show, zIndex, children }: RoomInputOverlayProps) => {
+const RoomInputOverlay = ({ show, zIndex, children, onHeightChange }: RoomInputOverlayProps) => {
   const keyboard = useAnimatedKeyboard();
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -61,7 +63,14 @@ const RoomInputOverlay = ({ show, zIndex, children }: RoomInputOverlayProps) => 
       style={[styles.wrapper, { zIndex }, !show && styles.hidden]}
       pointerEvents={show ? 'box-none' : 'none'}
     >
-      <Animated.View style={[styles.bar, animatedStyle]} pointerEvents="auto">
+      <Animated.View
+        style={[styles.bar, animatedStyle]}
+        pointerEvents="auto"
+        onLayout={(e) => {
+          const h = e.nativeEvent.layout.height;
+          if (h > 0) onHeightChange?.(h);
+        }}
+      >
         {children}
       </Animated.View>
     </View>

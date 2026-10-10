@@ -22,12 +22,17 @@ interface CommunityListScreenProps {
   onClose: () => void;
   onOpenCommunity: (community: any) => void;
   initialTab?: 'all' | 'mine';
+  // Overlay neeche se kitna upar rukega. Default BOTTOM_NAV_PX (jab parent
+  // poori screen hai, jaise _layout.tsx). Agar parent already BottomNav ke
+  // upar khatam hota hai (jaise Profile tab ka body), to 0 pass karo -
+  // warna neeche 80px ka hissa gayab ho jaata hai.
+  bottomOffset?: number;
 }
 
 // Self-contained: apna list/search pages khud fetch karta hai. Do tabs -
 // "All" (discover/search, paginated) aur "My Communities" (sirf joined
 // wali, /communities/mine se seedha, koi pagination/search nahi).
-const CommunityListScreen = ({ show, onClose, onOpenCommunity, initialTab = 'all' }: CommunityListScreenProps) => {
+const CommunityListScreen = ({ show, onClose, onOpenCommunity, initialTab = 'all', bottomOffset = BOTTOM_NAV_PX }: CommunityListScreenProps) => {
   const zIndex = useTopZIndex(show);
   const insets = useSafeAreaInsets();
   useBackButtonHandler(show, onClose);
@@ -167,7 +172,7 @@ const CommunityListScreen = ({ show, onClose, onOpenCommunity, initialTab = 'all
       <SlideInRight
         show={show}
         bouncy={false}
-        style={[styles.overlay, { bottom: BOTTOM_NAV_PX, zIndex, elevation: zIndex }]}
+        style={[styles.overlay, { bottom: bottomOffset, zIndex, elevation: zIndex }]}
       >
         <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
           <Pressable onPress={onClose} hitSlop={10}>

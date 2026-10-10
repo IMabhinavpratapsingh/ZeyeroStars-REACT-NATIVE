@@ -1,4 +1,4 @@
-import React, { type ReactNode, useLayoutEffect, useState } from 'react';
+import React, { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   Dimensions,
   Modal,
@@ -11,6 +11,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AnimatePresence, MotiView } from 'moti';
 import { Easing } from 'react-native-reanimated';
+import { publishInlineOverlay } from '../utils/inlineOverlayBus';
 
 const MARGIN = 10; // screen edge se minimum gap
 const GAP = 8; // anchor point se menu ke beech gap
@@ -58,9 +59,13 @@ interface LongPressActionSheetProps {
   items?: ActionSheetItem[];
   onClose: () => void;
   anchor?: { x: number; y: number } | null;
+  // true -> RN <Modal> ki jagah screen ke `InlineOverlayHost` mein render hota hai
+  // (host parent screen mein mount hona chahiye). Android par Modal keyboard band
+  // kar deta hai; inline mein keyboard khula rehta hai (DM chat ke liye).
+  inline?: boolean;
 }
 
-const LongPressActionSheet = ({ open, title, items = [], onClose, anchor }: LongPressActionSheetProps) => {
+const LongPressActionSheet = ({ open, title, items = [], onClose, anchor, inline = false }: LongPressActionSheetProps) => {
   const insets = useSafeAreaInsets();
   const anchored = !!anchor;
   const [panelPos, setPanelPos] = useState<{ left: number; top: number } | null>(null);
@@ -96,10 +101,7 @@ const LongPressActionSheet = ({ open, title, items = [], onClose, anchor }: Long
 
   const close = () => onClose();
 
-  if (!open) return null;
-
-  return (
-    <Modal visible={open} transparent animationType="none" onRequestClose={close} statusBarTranslucent>
+  const content = (
       <AnimatePresence>
         {open && (
           <>
@@ -167,6 +169,25 @@ const LongPressActionSheet = ({ open, title, items = [], onClose, anchor }: Long
           </>
         )}
       </AnimatePresence>
+  );
+
+  const overlayKey = useRef(`lpas-${Math.random().toString(36).slice(2)}`).current;
+  const useInline = inline && Platform.OS === 'android';
+
+  // Inline mode: har render par fresh element publish (items/closures update rahein),
+  // band hone / unmount par hata do.
+  useEffect(() => {
+    if (!useInline) return;
+    publishInlineOverlay(overlayKey, open ? <View style={StyleSheet.absoluteFill}>{content}</View> : null);
+  });
+  useEffect(() => () => publishInlineOverlay(overlayKey, null), [overlayKey]);
+
+  if (!open) return null;
+  if (useInline) return null;
+
+  return (
+    <Modal visible={open} transparent animationType="none" onRequestClose={close} statusBarTranslucent>
+      {content}
     </Modal>
   );
 };

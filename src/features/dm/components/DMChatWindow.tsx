@@ -23,6 +23,7 @@ import SwipeableBubble from '../../../shared/components/SwipeableBubble';
 import VerifiedBadge from '../../../shared/components/VerifiedBadge';
 import EliteBadge from '../../../shared/components/EliteBadge';
 import LongPressActionSheet from '../../../shared/components/LongPressActionSheet';
+import { InlineOverlayHost } from '../../../shared/utils/inlineOverlayBus';
 import ReportBlockModal from './ReportBlockModal';
 import EmojiPanel from './EmojiPanel';
 import KebabMenu, { type KebabMenuHandle } from '../../../shared/components/KebabMenu';
@@ -302,6 +303,7 @@ const DMMessageBubble = memo(
               </View>
 
               <LongPressActionSheet
+                inline
                 open={menuOpen}
                 anchor={menuAnchor}
                 onClose={() => setMenuOpen(false)}
@@ -466,8 +468,21 @@ const DMChatWindow = ({
   useEffect(() => {
     emojiOpenSV.value = emojiOpen ? 1 : 0;
   }, [emojiOpen, emojiOpenSV]);
-  const keyboardSpacerStyle = useAnimatedStyle(() => ({
-    height: emojiOpenSV.value === 1 ? 0 : Math.max(insets.bottom, keyboard.height.value),
+  // PERF: pehle spacer ki HEIGHT har frame badalti thi -> poori FlatList ka
+  // layout har frame dobara compute hota tha (laggy). Ab chat body ko
+  // `translateY` se upar uthate hain (layout nahi badalta, sirf GPU transform)
+  // aur neeche ka spacer constant rehta hai.
+  const bodyKeyboardStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateY:
+          emojiOpenSV.value === 1 ? 0 : -Math.max(0, keyboard.height.value - insets.bottom),
+      },
+    ],
+  }));
+
+  const attachSheetStyle = useAnimatedStyle(() => ({
+    bottom: Math.max(0, keyboard.height.value),
   }));
 
   useEffect(() => {
@@ -627,6 +642,8 @@ const DMChatWindow = ({
 
   // Attachments: + button -> sheet (Gallery / Camera) -> photo DM mein jaati hai.
   const [attachOpen, setAttachOpen] = useState(false);
+  const closeAttach = useStableCallback(() => setAttachOpen(false));
+  useBackButtonHandler(attachOpen, closeAttach);
   const sendPickedPhoto = (uri?: string | null) => {
     if (!uri) return;
     onSendPhoto?.(uri, replyTarget?.id ?? null);
@@ -918,6 +935,7 @@ const DMChatWindow = ({
           </View>
         )}
 
+        <Animated.View style={[styles.flex, bodyKeyboardStyle]}>
         {/* Messages */}
         {loading ? (
           <View style={styles.skelWrap}>
@@ -1029,7 +1047,7 @@ const DMChatWindow = ({
           ) : (
             <>
               {/* + button - attachments (photo) */}
-              <Pressable onPress={() => { Keyboard.dismiss(); setAttachOpen(true); }} style={styles.plusBtn}>
+              <Pressable onPress={() => setAttachOpen(true)} style={styles.plusBtn}>
                 <Ionicons name="add" size={28} color="#d4d4d4" />
               </Pressable>
 
@@ -1063,8 +1081,39 @@ const DMChatWindow = ({
           )}
         </View>
 
-        <Modal visible={attachOpen} transparent animationType="fade" onRequestClose={() => setAttachOpen(false)} statusBarTranslucent>
-          <Pressable style={styles.sheetScrim} onPress={() => setAttachOpen(false)}>
+
+        {emojiOpen && (
+          <EmojiPanel
+            height={Math.max(260, kbHeightRef.current)}
+            bottomInset={insets.bottom}
+            onPick={insertEmoji}
+            onBackspace={backspaceEmoji}
+          />
+        )}
+
+        <View style={{ height: emojiOpen ? 0 : insets.bottom }} pointerEvents="none" />
+        </Animated.View>
+
+        {!!actionToast && (
+          <View style={[styles.toast, { top: insets.top + 64 }]} pointerEvents="none">
+            <Text style={styles.toastText}>{actionToast}</Text>
+          </View>
+        )}
+
+        <ReportBlockModal
+          mode={reportState?.mode}
+          target={reportState?.target || null}
+          onClose={() => setReportState(null)}
+          onDone={(m: any) => showActionToast(m === 'block' ? 'User blocked.' : 'Report submitted, thank you.')}
+        />
+      </View>
+      {/* Attach sheet: RN <Modal> hata diya - Modal Android par window focus le leta hai
+          aur keyboard band ho jaata tha. Ab in-tree overlay hai; sheet keyboard ke
+          upar (bottom = keyboard height) baithti hai, keyboard khula rehta hai. */}
+      {attachOpen && (
+        <View style={styles.attachLayer}>
+          <Pressable style={styles.attachScrim} onPress={() => setAttachOpen(false)} />
+          <Animated.View style={[styles.attachSheetWrap, attachSheetStyle]}>
             <View style={styles.sheet}>
               <View style={styles.sheetHandle} />
               <Pressable onPress={pickFromGallery} style={styles.sheetRow}>
@@ -1080,32 +1129,10 @@ const DMChatWindow = ({
                 <Text style={styles.sheetLabel}>Take a photo</Text>
               </Pressable>
             </View>
-          </Pressable>
-        </Modal>
-
-        {emojiOpen && (
-          <EmojiPanel
-            height={Math.max(260, kbHeightRef.current)}
-            bottomInset={insets.bottom}
-            onPick={insertEmoji}
-            onBackspace={backspaceEmoji}
-          />
-        )}
-
-        {!!actionToast && (
-          <View style={[styles.toast, { top: insets.top + 64 }]} pointerEvents="none">
-            <Text style={styles.toastText}>{actionToast}</Text>
-          </View>
-        )}
-
-        <ReportBlockModal
-          mode={reportState?.mode}
-          target={reportState?.target || null}
-          onClose={() => setReportState(null)}
-          onDone={(m: any) => showActionToast(m === 'block' ? 'User blocked.' : 'Report submitted, thank you.')}
-        />
-      <Animated.View style={keyboardSpacerStyle} pointerEvents="none" />
-      </View>
+          </Animated.View>
+        </View>
+      )}
+      <InlineOverlayHost />
     </View>
   );
 };
@@ -1116,6 +1143,8 @@ const styles = StyleSheet.create({
   wallpaperDim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.35)' },
   fill: { width: '100%', height: '100%' },
   header: {
+    zIndex: 5,
+    elevation: 5,
     paddingHorizontal: 12,
     paddingBottom: 10,
     backgroundColor: '#0a0a0a',
@@ -1255,6 +1284,9 @@ const styles = StyleSheet.create({
   viewerBg: { flex: 1, backgroundColor: '#000000', alignItems: 'center', justifyContent: 'center' },
   viewerImg: { width: '100%', height: '100%' },
   viewerClose: { position: 'absolute', top: 44, right: 16, backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 20, padding: 8 },
+  attachLayer: { ...StyleSheet.absoluteFill, zIndex: 60, elevation: 60 },
+  attachScrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.55)' },
+  attachSheetWrap: { position: 'absolute', left: 0, right: 0 },
   sheetScrim: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
   sheet: { backgroundColor: '#161616', borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 28, gap: 6 },
   sheetHandle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: '#3a3a3a', marginBottom: 8 },

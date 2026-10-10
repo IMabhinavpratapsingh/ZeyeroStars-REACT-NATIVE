@@ -45,7 +45,7 @@ import { subscribeOpenQuickActions } from '../../shared/utils/quickActionsBus';
 import { requestFeedWallpaper } from '../../shared/utils/feedWallpaperBus';
 import { subscribeOpenStore, type StoreTabId } from '../../shared/utils/storeOpenBus';
 import { requestFeedScrollTopReload } from '../../shared/utils/feedScrollBus';
-import { subscribeOpenCommunity, requestOpenCommunityBySlug, requestOpenCommunityById } from '../../shared/utils/communityOpenBus';
+import { subscribeOpenCommunity, subscribeOpenCommunitiesList, requestOpenCommunityBySlug, requestOpenCommunityById } from '../../shared/utils/communityOpenBus';
 import { subscribeOpenProfile, type ProfileOpenPayload } from '../../shared/utils/profileOpenBus';
 import { subscribeFullscreenOverlay } from '../../shared/utils/fullscreenOverlayBus';
 import { requestOpenGame, subscribeGameActive, subscribeCloseAllForGame, requestCloseGameMenus } from '../../shared/utils/gameOverlayBus';
@@ -394,6 +394,17 @@ export default function TabsLayout() {
             showAlert("Couldn't find that community.");
           }
         }
+      }),
+    [community],
+  );
+
+  // Profile tab ("Community" card) se communities list -> yahi overlay khulta hai.
+  useEffect(
+    () =>
+      subscribeOpenCommunitiesList((tab) => {
+        setShowRooms(false);
+        setShowDM(false);
+        community.openCommunitiesList(tab);
       }),
     [community],
   );

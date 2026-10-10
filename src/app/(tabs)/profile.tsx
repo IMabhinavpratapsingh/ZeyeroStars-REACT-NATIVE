@@ -4,10 +4,9 @@ import { router, usePathname } from 'expo-router';
 import { getMyId } from '../../shared/utils/auth';
 import ProfileViewModal from '../../features/dm/components/ProfileViewModal';
 import SettingsMenu from '../../features/dm/components/SettingsMenu';
-import CommunityListScreen from '../../features/communities/components/CommunityListScreen';
 import useDashboardBalance from '../../features/dashboard/hooks/useDashboardBalance';
 import { requestOpenRooms } from '../../shared/utils/navOverlayBus';
-import { requestOpenCommunityById } from '../../shared/utils/communityOpenBus';
+import { requestOpenCommunitiesList } from '../../shared/utils/communityOpenBus';
 
 // WEB -> RN SCOPE NOTE: pehle yahan ek bahut chhota placeholder self-profile
 // screen tha (sirf avatar + coins/z_money + logout). Ab web ke ProfileViewModal
@@ -27,7 +26,6 @@ export default function ProfileScreen() {
   const isFocused = pathname.includes('/profile');
   const { balance, setBalance } = useDashboardBalance();
   const [showSettings, setShowSettings] = useState(false);
-  const [showCommunities, setShowCommunities] = useState(false);
   const [settingsUsername, setSettingsUsername] = useState<string | undefined>();
 
   return (
@@ -44,7 +42,7 @@ export default function ProfileScreen() {
           setSettingsUsername(username);
           setShowSettings(true);
         }}
-        onOpenMyCommunities={() => setShowCommunities(true)}
+        onOpenMyCommunities={() => requestOpenCommunitiesList('mine')}
       />
 
       <SettingsMenu
@@ -54,16 +52,6 @@ export default function ProfileScreen() {
         onBalanceUpdate={setBalance}
         currentUsername={settingsUsername}
         onLogout={() => router.replace('/login')}
-      />
-
-      <CommunityListScreen
-        show={showCommunities}
-        onClose={() => setShowCommunities(false)}
-        initialTab="mine"
-        onOpenCommunity={(c) => {
-          setShowCommunities(false);
-          requestOpenCommunityById(c);
-        }}
       />
     </View>
   );

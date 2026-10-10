@@ -33,3 +33,20 @@ export function requestOpenCommunityById(community: CommunityOpenPayload): void 
 export function requestOpenCommunityBySlug(slug: string, name?: string): void {
   listeners.forEach((l) => l({ bySlug: { slug, name } }));
 }
+
+// Communities LIST (All/Mine tab) kholne ke liye - Profile tab jaisi screens
+// apna alag list overlay render karne ki jagah yahi bus use karti hain, taaki
+// `_layout.tsx` ka ek hi (sahi bottom-nav offset wala) list overlay khule.
+type ListListener = (tab: 'all' | 'mine') => void;
+let listListeners: ListListener[] = [];
+
+export function subscribeOpenCommunitiesList(listener: ListListener): () => void {
+  listListeners.push(listener);
+  return () => {
+    listListeners = listListeners.filter((l) => l !== listener);
+  };
+}
+
+export function requestOpenCommunitiesList(tab: 'all' | 'mine' = 'all'): void {
+  listListeners.forEach((l) => l(tab));
+}

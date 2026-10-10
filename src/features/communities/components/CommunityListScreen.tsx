@@ -2,6 +2,7 @@ import React, { memo, useEffect, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getMyId } from '../../../shared/utils/auth';
 import useBackButtonHandler from '../../../shared/hooks/useBackButtonHandler';
 import useTopZIndex from '../../../shared/hooks/useTopZIndex';
 import { SlideInRight } from '../../../shared/components/motion/ScreenTransition';
@@ -21,7 +22,7 @@ interface CommunityListScreenProps {
   show: boolean;
   onClose: () => void;
   onOpenCommunity: (community: any) => void;
-  initialTab?: 'all' | 'mine';
+  initialTab?: 'all' | 'mine' | 'own';
   // Overlay neeche se kitna upar rukega. Default BOTTOM_NAV_PX (jab parent
   // poori screen hai, jaise _layout.tsx). Agar parent already BottomNav ke
   // upar khatam hota hai (jaise Profile tab ka body), to 0 pass karo -
@@ -37,7 +38,7 @@ const CommunityListScreen = ({ show, onClose, onOpenCommunity, initialTab = 'all
   const insets = useSafeAreaInsets();
   useBackButtonHandler(show, onClose);
 
-  const [tab, setTab] = useState<'all' | 'mine'>(initialTab);
+  const [tab, setTab] = useState<'all' | 'mine' | 'own'>(initialTab);
 
   const [communities, setCommunities] = useState<any[]>(() => communitiesResource.getSnapshot()?.list || []);
   const [loading, setLoading] = useState(() => communitiesResource.getSnapshot() == null);
@@ -121,7 +122,7 @@ const CommunityListScreen = ({ show, onClose, onOpenCommunity, initialTab = 'all
   }, [show]);
 
   useEffect(() => {
-    if (!show || tab !== 'mine') return;
+    if (!show || tab === 'all') return;
     loadMyCommunities();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [show, tab]);
@@ -153,19 +154,26 @@ const CommunityListScreen = ({ show, onClose, onOpenCommunity, initialTab = 'all
     }
   };
 
-  const activeData = tab === 'all' ? communities : myList;
+  // 'mine' = Joined (meri banayi hui bhi included), 'own' = sirf meri banayi hui communities.
+  const myIdStr = String(getMyId() ?? '');
+  const ownList = myList.filter(
+    (c) => (c.owner_id != null && String(c.owner_id) === myIdStr) || c.is_owner === true || c.role === 'owner'
+  );
+  const activeData = tab === 'all' ? communities : tab === 'own' ? ownList : myList;
   // Odd count par aakhri card akela row mein poori width le leta tha (cardWrap
   // pe `flex: 1`) - isliye bada dikhta tha. Invisible spacer se har card Rooms
   // jaisa same size rehta hai.
   const listData: any[] =
     activeData.length % 2 === 1 ? [...activeData, { id: '__spacer__', __spacer: true }] : activeData;
-  const activeLoading = tab === 'all' ? loading : myLoading;
+  const activeLoading = tab === 'all' ? loading : myLoading && activeData.length === 0;
   const emptyText =
     tab === 'all'
       ? activeQuery
         ? `No communities found for "${activeQuery}"`
         : 'No communities yet - be the first to create one.'
-      : "You haven't joined any community yet.";
+      : tab === 'own'
+        ? "You haven't created any community yet."
+        : "You haven't joined any community yet.";
 
   return (
     <>
@@ -209,7 +217,10 @@ const CommunityListScreen = ({ show, onClose, onOpenCommunity, initialTab = 'all
             <Text style={[styles.tabBtnText, tab === 'all' && styles.tabBtnTextActive]}>All</Text>
           </Pressable>
           <Pressable onPress={() => setTab('mine')} style={[styles.tabBtn, tab === 'mine' && styles.tabBtnActive]}>
-            <Text style={[styles.tabBtnText, tab === 'mine' && styles.tabBtnTextActive]}>My Communities</Text>
+            <Text style={[styles.tabBtnText, tab === 'mine' && styles.tabBtnTextActive]}>Joined</Text>
+          </Pressable>
+          <Pressable onPress={() => setTab('own')} style={[styles.tabBtn, tab === 'own' && styles.tabBtnActive]}>
+            <Text style={[styles.tabBtnText, tab === 'own' && styles.tabBtnTextActive]}>My Community</Text>
           </Pressable>
         </View>
 

@@ -1144,7 +1144,6 @@ const styles = StyleSheet.create({
   fill: { width: '100%', height: '100%' },
   header: {
     zIndex: 5,
-    elevation: 5,
     paddingHorizontal: 12,
     paddingBottom: 10,
     backgroundColor: '#0a0a0a',

@@ -65,7 +65,13 @@ interface LongPressActionSheetProps {
   inline?: boolean;
 }
 
-const LongPressActionSheet = ({ open, title, items = [], onClose, anchor, inline = false }: LongPressActionSheetProps) => {
+// PERF: chat mein har message bubble ek LongPressActionSheet rakhta hai. Band hone par
+// ye ab sirf `null` return karta hai (koi hook/effect/element-tree nahi) - bhaari kaam
+// (state, effects, Modal/portal) sirf tab hota hai jab menu sach mein khula ho.
+const LongPressActionSheet = (props: LongPressActionSheetProps) =>
+  props.open ? <LongPressActionSheetInner {...props} /> : null;
+
+const LongPressActionSheetInner = ({ open, title, items = [], onClose, anchor, inline = false }: LongPressActionSheetProps) => {
   const insets = useSafeAreaInsets();
   const anchored = !!anchor;
   const [panelPos, setPanelPos] = useState<{ left: number; top: number } | null>(null);

@@ -5,7 +5,7 @@ import type { FeedScope } from '../services/feedApi';
 // Home feed ka source: poori duniya (Global) ya sirf meri joined communities.
 const OPTIONS: { key: FeedScope; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { key: 'global', label: 'Global', icon: 'globe-outline' },
-  { key: 'joined', label: 'My Communities', icon: 'people-outline' },
+  { key: 'joined', label: 'Joined Communities', icon: 'people-outline' },
 ];
 
 export default function FeedScopeToggle({
